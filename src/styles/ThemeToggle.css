@@ -1,0 +1,49 @@
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #374151;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.theme-toggle:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.theme-icon {
+  font-size: 1rem;
+}
+
+.theme-label {
+  font-weight: 500;
+}
+
+/* Dark theme support */
+:root.dark .theme-toggle {
+  background: #374151;
+  border-color: #4b5563;
+  color: #f3f4f6;
+}
+
+:root.dark .theme-toggle:hover {
+  background: #4b5563;
+  border-color: #6b7280;
+}
+
+/* System theme support */
+:root[data-theme="system"] .theme-toggle {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+}
+
+:root[data-theme="system"] .theme-toggle:hover {
+  opacity: 0.9;
+}

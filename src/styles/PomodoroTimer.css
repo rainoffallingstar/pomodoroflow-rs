@@ -1,0 +1,399 @@
+.pomodoro-timer {
+    background: linear-gradient(
+        180deg,
+        var(--bg-primary) 0%,
+        var(--bg-secondary) 100%
+    );
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    transition: all 0.2s ease-in-out;
+}
+
+.pomodoro-timer:hover {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* 当前任务卡片 */
+.timer-current-todo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    background: linear-gradient(
+        135deg,
+        var(--accent-color) 0%,
+        #2563eb 50%,
+        #1d4ed8 100%
+    );
+    border-radius: 0.75rem;
+    margin-bottom: 1.5rem;
+    color: white;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.timer-current-todo::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(
+        circle,
+        rgba(255, 255, 255, 0.1) 0%,
+        transparent 70%
+    );
+    animation: shimmer 3s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0%,
+    100% {
+        transform: translate(0, 0) rotate(0deg);
+    }
+    50% {
+        transform: translate(-10%, -10%) rotate(5deg);
+    }
+}
+
+.current-todo-label {
+    font-size: 0.75rem;
+    opacity: 0.8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
+    z-index: 1;
+}
+
+.current-todo-title {
+    font-size: 1rem;
+    font-weight: 600;
+    position: relative;
+    z-index: 1;
+}
+
+.timer-header {
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.timer-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.timer-subtitle {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.timer-status,
+.timer-cycle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.timer-display {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 2rem;
+}
+
+.timer-circle-container {
+    position: relative;
+    width: 220px;
+    height: 220px;
+}
+
+.timer-circle-svg {
+    width: 100%;
+    height: 100%;
+}
+
+.timer-progress-circle {
+    transition: stroke-dashoffset 0.5s ease-in-out;
+    filter: drop-shadow(0 0 8px currentColor);
+}
+
+.timer-circle-container.running .timer-progress-circle {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+    0%,
+    100% {
+        filter: drop-shadow(0 0 8px currentColor);
+    }
+    50% {
+        filter: drop-shadow(0 0 16px currentColor);
+    }
+}
+
+.timer-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.timer-time {
+    font-size: 2.5rem;
+    font-weight: 700;
+    font-family: "Courier New", monospace;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.timer-phase {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.timer-description {
+    font-size: 0.875rem;
+    color: var(--text-tertiary);
+    max-width: 180px;
+}
+
+.timer-stats {
+    margin-bottom: 1.5rem;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+.stat-item {
+    background: linear-gradient(
+        135deg,
+        var(--bg-tertiary) 0%,
+        var(--bg-secondary) 100%
+    );
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    text-align: center;
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+}
+
+.stat-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border-color: var(--accent-color);
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.timer-controls {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+
+.timer-controls .btn {
+    padding: 0.75rem 1.25rem;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-width: 90px;
+}
+
+.timer-controls .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.timer-controls .btn-primary {
+    background: linear-gradient(135deg, var(--accent-color) 0%, #2563eb 100%);
+    color: white;
+}
+
+.timer-controls .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+}
+
+.timer-controls .btn-secondary {
+    background: linear-gradient(
+        135deg,
+        var(--bg-tertiary) 0%,
+        var(--bg-secondary) 100%
+    );
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.timer-controls .btn-secondary:hover:not(:disabled) {
+    background: linear-gradient(
+        135deg,
+        var(--bg-secondary) 0%,
+        var(--bg-tertiary) 100%
+    );
+    border-color: var(--accent-color);
+}
+
+.timer-controls .btn-danger {
+    background: linear-gradient(135deg, var(--error-color) 0%, #dc2626 100%);
+    color: white;
+}
+
+.timer-controls .btn-danger:hover:not(:disabled) {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
+}
+
+.timer-controls .btn-icon {
+    font-size: 1rem;
+}
+
+.timer-controls .btn-text {
+    font-size: 0.875rem;
+}
+
+.timer-next-phase {
+    padding: 0.75rem;
+    background-color: var(--bg-tertiary);
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.next-phase-label {
+    font-size: 0.875rem;
+    color: var(--text-tertiary);
+}
+
+.next-phase-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.next-phase-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.next-phase-time {
+    font-size: 0.875rem;
+    font-family: "Courier New", monospace;
+    color: var(--text-secondary);
+    background-color: var(--bg-secondary);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid var(--border-color);
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+    .timer-circle-container {
+        width: 200px;
+        height: 200px;
+    }
+
+    .timer-time {
+        font-size: 2.25rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .timer-circle-container {
+        width: 180px;
+        height: 180px;
+    }
+
+    .timer-time {
+        font-size: 2rem;
+    }
+
+    .timer-phase {
+        font-size: 0.875rem;
+    }
+
+    .timer-description {
+        font-size: 0.75rem;
+    }
+
+    .stat-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .timer-controls {
+        gap: 0.5rem;
+    }
+
+    .timer-controls .btn {
+        padding: 0.5rem 1rem;
+        min-width: 80px;
+    }
+}
+
+@media (max-width: 480px) {
+    .timer-circle-container {
+        width: 160px;
+        height: 160px;
+    }
+
+    .timer-time {
+        font-size: 1.75rem;
+    }
+
+    .timer-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .timer-controls .btn {
+        width: 100%;
+    }
+
+    .next-phase-info {
+        flex-direction: column;
+        gap: 0.25rem;
+        align-items: flex-end;
+    }
+}

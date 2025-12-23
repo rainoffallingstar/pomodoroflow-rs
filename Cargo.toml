@@ -1,0 +1,65 @@
+[package]
+name = "pomoflow-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["You"]
+description = "A Pomodoro Timer + Todo Manager with GitHub sync"
+license = "MIT"
+repository = "https://github.com/yourusername/pomoflow-rs"
+
+[dependencies]
+# 异步运行时
+tokio = { version = "1.0", features = ["full"] }
+
+# 数据库
+rusqlite = { version = "0.31", features = ["chrono", "serde_json", "bundled"] }
+
+# 线程安全包装
+send_wrapper = "0.6"
+
+# 序列化
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# 错误处理
+thiserror = "1.0"
+anyhow = "1.0"
+
+# 时间处理
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# 通知
+notify-rust = "4.9"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+
+# 系统目录
+dirs = "5.0"
+
+[target.'cfg(windows)'.dependencies]
+winrt-notification = "0.5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.24"
+objc = "0.2"
+
+[features]
+# 启用调试功能
+debug = ["tracing-subscriber/env-filter"]
+
+[profile.dev]
+opt-level = 0
+debug = true
+split-debuginfo = "packed"  # Windows特定优化
+incremental = false  # 临时禁用增量编译
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

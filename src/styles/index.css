@@ -1,0 +1,97 @@
+/* iOS 18 Design System - Main Entry Point
+   Import iOS theme first, then custom overrides
+*/
+
+@import "./iOS-theme.css";
+
+/* Legacy variable mapping for compatibility
+   Maps old variable names to iOS theme variables
+ */
+:root {
+    /* Map legacy variables to iOS theme */
+    --bg-primary: var(--ios-bg-primary);
+    --bg-secondary: var(--ios-bg-secondary);
+    --bg-tertiary: var(--ios-bg-tertiary);
+    --text-primary: var(--ios-text-primary);
+    --text-secondary: var(--ios-text-secondary);
+    --text-tertiary: var(--ios-text-tertiary);
+    --border-color: var(--ios-separator);
+    --accent-color: var(--ios-blue);
+    --success-color: var(--ios-green);
+    --warning-color: var(--ios-orange);
+    --error-color: var(--ios-red);
+
+    /* Shadow system - iOS style */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+
+    /* Transition timing - iOS spring curves */
+    --transition-fast: var(--ios-duration-fast) var(--ios-spring);
+    --transition-base: var(--ios-duration-base) var(--ios-spring);
+    --transition-slow: var(--ios-duration-slow) var(--ios-spring);
+
+    /* Border radius - iOS system */
+    --radius-sm: var(--ios-radius-small);
+    --radius-md: var(--ios-radius-medium);
+    --radius-lg: var(--ios-radius-large);
+    --radius-full: 9999px;
+
+    /* Typography */
+    font-family:
+        -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+        "Inter", sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+
+    color-scheme: light dark;
+
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+}
+
+/* Dark theme variable mapping */
+:root.dark,
+[data-theme="dark"] {
+    /* Map legacy variables to iOS dark theme */
+    --bg-primary: var(--ios-bg-primary);
+    --bg-secondary: var(--ios-bg-secondary);
+    --bg-tertiary: var(--ios-bg-tertiary);
+    --text-primary: var(--ios-text-primary);
+    --text-secondary: var(--ios-text-secondary);
+    --text-tertiary: var(--ios-text-tertiary);
+    --border-color: var(--ios-separator);
+    --accent-color: var(--ios-blue);
+    --success-color: var(--ios-green);
+    --warning-color: var(--ios-orange);
+    --error-color: var(--ios-red);
+
+    /* Dark theme shadows */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+}
+
+body {
+    margin: 0;
+    display: flex;
+    place-items: center;
+    min-width: 320px;
+    min-height: 100vh;
+    background-color: var(--ios-bg-primary);
+    color: var(--ios-text-primary);
+}
+
+#root {
+    width: 100%;
+    margin: 0;
+}
+
+* {
+    box-sizing: border-box;
+}

@@ -1,0 +1,56 @@
+# Rust target directories
+/target/
+src-tauri/target/
+
+# Rust 编译器输出
+**/*.rs.bk
+*.pdb
+
+# Node modules
+node_modules/
+
+# 构建输出
+dist/
+build/
+out/
+
+# 生产构建
+bundle/
+*.dmg
+*.exe
+*.app
+
+# 日志文件
+*.log
+npm-debug.log
+yarn-error.log
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local
+
+# 测试覆盖率
+coverage/
+
+# 临时文件
+tmp/
+temp/
+
+# .claude 目录（Factory AI 配置 - 不提交到版本控制）
+.claude/
+.user-data/
