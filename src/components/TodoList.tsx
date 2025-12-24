@@ -264,16 +264,17 @@ export function TodoList() {
         </>
       )}
 
-      {/* iOS 分组列表 */}
-      <div className="ios-grouped-list">
-        {filteredAndSortedTodos.map((todo) => (
-          <div
-            key={todo.id}
-            className={`ios-list-item ${
-              isSelected(todo.id) ? "selected" : ""
-            } ${isCompleted(todo.status) ? "completed" : ""}`}
-            onClick={() => selectTodo(todo.id)}
-          >
+      {/* iOS 分组列表 - 可滚动区域 */}
+      <div className="ios-grouped-list-wrapper">
+        <div className="ios-grouped-list">
+          {filteredAndSortedTodos.map((todo) => (
+            <div
+              key={todo.id}
+              className={`ios-list-item ${
+                isSelected(todo.id) ? "selected" : ""
+              } ${isCompleted(todo.status) ? "completed" : ""}`}
+              onClick={() => selectTodo(todo.id)}
+            >
             {/* iOS 状态指示器 */}
             <div
               className={`ios-status-indicator status-${todo.status}`}
@@ -337,18 +338,19 @@ export function TodoList() {
             )}
           </div>
         ))}
-      </div>
-
-      {/* 空状态 */}
-      {filteredAndSortedTodos.length === 0 && (
-        <div className="ios-empty-state">
-          <div className="ios-empty-icon">📝</div>
-          <p className="ios-empty-title">暂无任务</p>
-          <p className="ios-empty-description">
-            添加第一个任务开始你的工作吧！
-          </p>
         </div>
-      )}
+
+        {/* 空状态 */}
+        {filteredAndSortedTodos.length === 0 && (
+          <div className="ios-empty-state">
+            <div className="ios-empty-icon">📝</div>
+            <p className="ios-empty-title">暂无任务</p>
+            <p className="ios-empty-description">
+              添加第一个任务开始你的工作吧！
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* iOS 浮动添加按钮 */}
       {editingId === null && newTodoTitle.trim() && (

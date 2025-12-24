@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAppStore, UserConfig } from "../stores/appStore";
 import "../styles/PomodoroTimer.css";
+import "../styles/PomodoroCard.css";
 
 /**
  * iOS 18 动态岛风格的番茄钟组件
@@ -181,46 +182,114 @@ export function PomodoroTimer() {
 
   const phaseClass = getPhaseClass(localPhase);
 
+  // 圆环进度条计算
+  const radius = 90;
+  const circumference = 2 * Math.PI * radius;
+  const duration = getDurationForPhase(localPhase);
+  const progress = localRemaining / duration;
+  const offset = circumference * (1 - progress);
+
+  // 获取阶段图标
+  const getPhaseIcon = (phase: string) => {
+    switch (phase) {
+      case "work":
+        return "🎯";
+      case "short_break":
+        return "🍅";
+      case "long_break":
+        return "☕️";
+      default:
+        return "⏱️";
+    }
+  };
+
+  const containerClass = [
+    "pomodoro-timer-content",
+    phaseClass,
+    isRunning ? "is-running" : ""
+  ].filter(Boolean).join(" ");
+
   return (
-    <div className={`ios-glass-background ${phaseClass}`}>
-      {/* 时间显示 */}
-      <div className="ios-timer-display">
-        <div className="ios-time">{formatTime(localRemaining)}</div>
-        <div className="ios-phase-label">{getPhaseText(localPhase)}</div>
-      </div>
+    <>
+      {/* SVG 渐变定义 */}
+      <svg className="svg-gradients">
+        <defs>
+          <linearGradient id="gradient-work" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#ff9500" />
+            <stop offset="100%" stopColor="#ff6b00" />
+          </linearGradient>
+          <linearGradient id="gradient-short-break" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#34c759" />
+            <stop offset="100%" stopColor="#30d158" />
+          </linearGradient>
+          <linearGradient id="gradient-long-break" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#007aff" />
+            <stop offset="100%" stopColor="#5ac8fa" />
+          </linearGradient>
+        </defs>
+      </svg>
 
-      {/* 当前选中的任务 */}
-      {selectedTodo && (
-        <div className="ios-current-todo">{selectedTodo.title}</div>
-      )}
+      <div className={containerClass}>
+        {/* 圆环进度条 */}
+        <div className="timer-circle-container">
+          <svg viewBox="0 0 200 200" className="timer-circle-svg">
+            <circle
+              className="timer-circle-bg"
+              cx="100"
+              cy="100"
+              r={radius}
+            />
+            <circle
+              className="timer-circle-progress"
+              cx="100"
+              cy="100"
+              r={radius}
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+            />
+          </svg>
+          <div className="timer-content">
+            <div className="timer-time">{formatTime(localRemaining)}</div>
+            <div className="timer-phase">{getPhaseText(localPhase)}</div>
+          </div>
+        </div>
 
-      {/* iOS 风格控制按钮 */}
-      <div className="ios-timer-controls">
-        <button
-          className="ios-control-btn ios-play-btn"
-          onClick={handleStart}
-          disabled={isRunning}
-          title="开始"
-        >
-          <span className="ios-icon">▶</span>
-        </button>
-        <button
-          className="ios-control-btn ios-pause-btn"
-          onClick={handlePause}
-          disabled={!isRunning}
-          title="暂停"
-        >
-          <span className="ios-icon">⏸</span>
-        </button>
-        <button
-          className="ios-control-btn ios-skip-btn"
-          onClick={handleSkip}
-          disabled={isRunning}
-          title="跳过当前阶段"
-        >
-          <span className="ios-icon">⏭</span>
-        </button>
+        {/* 当前选中的任务 */}
+        {selectedTodo && (
+          <div className="ios-current-todo">
+            <span className="ios-current-todo-icon">{getPhaseIcon(localPhase)}</span>
+            <span className="ios-current-todo-text">{selectedTodo.title}</span>
+          </div>
+        )}
+
+        {/* iOS 风格控制按钮 */}
+        <div className="ios-timer-controls">
+          <button
+            className="ios-control-btn ios-play-btn"
+            onClick={handleStart}
+            disabled={isRunning}
+            title="开始"
+          >
+            <span className="ios-icon">▶</span>
+          </button>
+          <button
+            className="ios-control-btn ios-pause-btn"
+            onClick={handlePause}
+            disabled={!isRunning}
+            title="暂停"
+          >
+            <span className="ios-icon">⏸</span>
+          </button>
+          <button
+            className="ios-control-btn ios-skip-btn"
+            onClick={handleSkip}
+            disabled={isRunning}
+            title="跳过当前阶段"
+          >
+            <span className="ios-icon">⏭</span>
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

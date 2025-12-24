@@ -1,0 +1,82 @@
+/**
+ * iOS 18 浮动设置按钮样式
+ * 固定在右上角的毛玻璃圆形按钮
+ */
+
+.ios-float-settings-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--ios-glass-bg);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid var(--ios-glass-border);
+  box-shadow:
+    0 0 0 0.5px var(--ios-glass-shadow),
+    0 4px 16px var(--ios-glass-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 100;
+  transition: all var(--ios-duration-fast) var(--ios-spring);
+  color: var(--ios-text-primary);
+}
+
+.ios-float-settings-btn:hover {
+  transform: scale(1.05);
+  box-shadow:
+    0 0 0 0.5px var(--ios-glass-shadow),
+    0 6px 20px var(--ios-glass-shadow);
+}
+
+.ios-float-settings-btn:active {
+  transform: scale(0.92);
+  box-shadow:
+    0 0 0 0.5px var(--ios-glass-shadow),
+    0 2px 8px var(--ios-glass-shadow);
+}
+
+.ios-settings-icon {
+  flex-shrink: 0;
+  transition: transform var(--ios-duration-base) var(--ios-spring);
+}
+
+.ios-float-settings-btn:hover .ios-settings-icon {
+  transform: rotate(30deg);
+}
+
+/* 深色模式适配 */
+:root.dark .ios-float-settings-btn,
+[data-theme="dark"] .ios-float-settings-btn {
+  background: rgba(28, 28, 30, 0.72);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.3),
+    0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+:root.dark .ios-float-settings-btn:hover,
+[data-theme="dark"] .ios-float-settings-btn:hover {
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.3),
+    0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* 响应式适配 */
+@media (max-width: 480px) {
+  .ios-float-settings-btn {
+    top: 12px;
+    right: 12px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .ios-settings-icon {
+    width: 20px;
+    height: 20px;
+  }
+}

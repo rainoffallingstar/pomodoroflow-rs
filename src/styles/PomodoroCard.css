@@ -1,0 +1,416 @@
+/**
+ * iOS 18 番茄钟卡片样式
+ * 圆环进度条 + 动画效果 + 粒子系统
+ * 卡片容器已在 iOS-layout.css 中定义为毛玻璃样式
+ */
+
+/* ========================================
+   内容容器 - 居中布局
+   ======================================== */
+
+.pomodoro-timer-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--ios-space-md);
+  position: relative;
+  z-index: 2;
+}
+
+/* ========================================
+   圆环进度条容器
+   ======================================== */
+
+.timer-circle-container {
+  position: relative;
+  width: 220px;
+  height: 220px;
+}
+
+.timer-circle-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+/* 背景圆环 */
+.timer-circle-bg {
+  fill: none;
+  stroke: var(--ios-bg-tertiary);
+  stroke-width: 8;
+  opacity: 0.3;
+}
+
+/* 进度圆环 */
+.timer-circle-progress {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s var(--ios-spring), stroke 0.3s ease;
+}
+
+/* Phase 颜色 */
+.phase-work .timer-circle-progress {
+  stroke: url(#gradient-work);
+  color: var(--ios-orange);
+}
+
+.phase-short-break .timer-circle-progress {
+  stroke: url(#gradient-short-break);
+  color: var(--ios-green);
+}
+
+.phase-long-break .timer-circle-progress {
+  stroke: url(#gradient-long-break);
+  color: var(--ios-blue);
+}
+
+/* 运行状态脉冲发光 */
+.is-running .timer-circle-svg {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+  50% {
+    filter: drop-shadow(0 0 16px currentColor);
+  }
+}
+
+/* ========================================
+   时间显示区域
+   ======================================== */
+
+.timer-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.timer-time {
+  font-size: 88px;
+  font-weight: 100;
+  letter-spacing: -3px;
+  color: var(--ios-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+  transition: color 0.3s var(--ios-spring);
+  line-height: 1;
+}
+
+/* 倒计时动画 - 每秒轻微缩放 */
+@keyframes tick-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.98);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.is-running .timer-time {
+  animation: tick-pulse 1s ease-in-out infinite;
+}
+
+.timer-phase {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ios-text-secondary);
+  margin-top: var(--ios-space-sm);
+  letter-spacing: 0.3px;
+  transition: color 0.3s var(--ios-spring);
+}
+
+/* ========================================
+   当前任务卡片
+   ======================================== */
+
+.ios-current-todo {
+  padding: var(--ios-space-sm) var(--ios-space-md);
+  background: linear-gradient(135deg, var(--ios-orange) 0%, #ff6b00 100%);
+  border-radius: var(--ios-radius-medium);
+  font-size: 15px;
+  color: white;
+  text-align: center;
+  max-width: 90%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ios-space-sm);
+  box-shadow: 0 4px 12px rgba(255, 149, 0, 0.3);
+  position: relative;
+  transition: all 0.3s var(--ios-spring);
+}
+
+/* Phase 颜色 */
+.phase-work .ios-current-todo {
+  background: linear-gradient(135deg, var(--ios-orange) 0%, #ff6b00 100%);
+  box-shadow: 0 4px 12px rgba(255, 149, 0, 0.3);
+}
+
+.phase-short-break .ios-current-todo {
+  background: linear-gradient(135deg, var(--ios-green) 0%, #30d158 100%);
+  box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3);
+}
+
+.phase-long-break .ios-current-todo {
+  background: linear-gradient(135deg, var(--ios-blue) 0%, #5ac8fa 100%);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+/* 光泽动画 */
+.ios-current-todo::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.3) 0%,
+    transparent 70%
+  );
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(-10%, -10%) rotate(5deg);
+  }
+}
+
+.ios-current-todo-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.ios-current-todo-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  position: relative;
+  z-index: 1;
+}
+
+.ios-current-todo:empty {
+  display: none;
+}
+
+/* ========================================
+   控制按钮
+   ======================================== */
+
+.ios-timer-controls {
+  display: flex;
+  gap: var(--ios-space-lg);
+  justify-content: center;
+  align-items: center;
+  margin-top: var(--ios-space-md);
+}
+
+.ios-control-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--ios-bg-primary);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--ios-duration-fast) var(--ios-spring);
+  box-shadow: 0 2px 8px var(--ios-glass-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 开始按钮更大 */
+.ios-play-btn {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--ios-green) 0%, #30d158 100%);
+}
+
+.ios-play-btn .ios-icon {
+  color: white;
+  font-size: 24px;
+}
+
+.ios-pause-btn .ios-icon {
+  color: var(--ios-blue);
+  font-size: 20px;
+}
+
+.ios-skip-btn .ios-icon {
+  color: var(--ios-gray);
+  font-size: 20px;
+}
+
+/* 悬停效果 */
+.ios-control-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px var(--ios-glass-shadow);
+}
+
+/* 按下反馈 */
+.ios-control-btn:active:not(:disabled) {
+  transform: scale(0.92);
+  box-shadow: 0 2px 4px var(--ios-glass-shadow);
+}
+
+/* 禁用状态 */
+.ios-control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+/* 波纹效果 */
+.ios-control-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.4) 0%,
+    transparent 70%
+  );
+  opacity: 0;
+  transform: scale(0);
+  transition: all var(--ios-duration-fast);
+}
+
+.ios-control-btn:active::after {
+  opacity: 1;
+  transform: scale(2);
+}
+
+.ios-icon {
+  position: relative;
+  z-index: 1;
+  transition: transform var(--ios-duration-base) var(--ios-spring);
+}
+
+/* ========================================
+   入场动画
+   ======================================== */
+
+/* 子元素延迟动画 */
+.timer-circle-container {
+  animation: elementFadeIn 0.5s var(--ios-spring) 0.1s backwards;
+}
+
+.ios-current-todo {
+  animation: elementFadeIn 0.5s var(--ios-spring) 0.2s backwards;
+}
+
+.ios-timer-controls {
+  animation: elementFadeIn 0.5s var(--ios-spring) 0.3s backwards;
+}
+
+@keyframes elementFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========================================
+   响应式设计
+   ======================================== */
+
+@media (max-width: 1199px) {
+  .timer-circle-container {
+    width: 200px;
+    height: 200px;
+  }
+
+  .timer-time {
+    font-size: 80px;
+    letter-spacing: -2.5px;
+  }
+
+  .ios-play-btn {
+    width: 60px;
+    height: 60px;
+  }
+
+  .ios-control-btn {
+    width: 52px;
+    height: 52px;
+  }
+}
+
+@media (max-width: 767px) {
+  .timer-circle-container {
+    width: 180px;
+    height: 180px;
+  }
+
+  .timer-time {
+    font-size: 72px;
+    letter-spacing: -2px;
+  }
+
+  .timer-phase {
+    font-size: 15px;
+  }
+
+  .ios-play-btn {
+    width: 56px;
+    height: 56px;
+  }
+
+  .ios-control-btn {
+    width: 48px;
+    height: 48px;
+  }
+
+  .ios-timer-controls {
+    gap: var(--ios-space-md);
+  }
+
+  .ios-current-todo {
+    font-size: 14px;
+    padding: var(--ios-space-sm) var(--ios-space-md);
+  }
+}
+
+/* ========================================
+   SVG 渐变定义
+   ======================================== */
+
+.svg-gradients {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}

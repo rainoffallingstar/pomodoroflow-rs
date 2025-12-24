@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Header } from "./components/Header";
 import { MainLayout } from "./components/MainLayout";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { MessageToast } from "./components/MessageToast";
+import { FloatingSettingsButton } from "./components/FloatingSettingsButton";
 import { useAppStore } from "./stores/appStore";
 import "./styles/App.css";
 
@@ -98,8 +98,8 @@ function App() {
       {/* 消息提示 */}
       <MessageToast />
 
-      {/* 顶部导航栏 */}
-      <Header onOpenSettings={() => setIsSettingsOpen(true)} />
+      {/* 浮动设置按钮 */}
+      <FloatingSettingsButton onClick={() => setIsSettingsOpen(true)} />
 
       {/* 主内容区域 */}
       <main className="app-main">
@@ -108,8 +108,8 @@ function App() {
 
       {/* 设置面板（iOS 18 风格模态框） */}
       {isSettingsOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           onClick={(e) => {
             // 只在点击遮罩层本身时关闭，不传递点击事件给子组件
             if (e.target === e.currentTarget) {
@@ -120,15 +120,6 @@ function App() {
           <SettingsPanel onClose={() => setIsSettingsOpen(false)} />
         </div>
       )}
-
-      {/* 底部状态栏 */}
-      <footer className="app-footer">
-        <div className="footer-content">
-          <span className="footer-text">
-            PomodoroFlow-Rs v0.1.0 • 使用番茄工作法提高工作效率
-          </span>
-        </div>
-      </footer>
     </div>
   );
 }

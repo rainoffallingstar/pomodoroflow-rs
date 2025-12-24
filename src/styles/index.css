@@ -3,6 +3,9 @@
 */
 
 @import "./iOS-theme.css";
+@import "./iOS-layout.css";
+@import "./FloatingSettingsButton.css";
+@import "./PomodoroCard.css";
 
 /* Legacy variable mapping for compatibility
    Maps old variable names to iOS theme variables

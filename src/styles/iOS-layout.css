@@ -1,0 +1,192 @@
+/**
+ * iOS 18 左右布局样式
+ * 左侧番茄钟卡片 + 右侧 TodoList 卡片
+ */
+
+.ios-split-layout {
+  display: flex;
+  flex-direction: row;
+  gap: 24px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 80px 24px 24px;
+  box-sizing: border-box;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 左侧番茄钟卡片容器 - 毛玻璃卡片 */
+.ios-pomodoro-card {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 400px;
+  background: var(--ios-glass-bg);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-radius: var(--ios-radius-large);
+  border: 1px solid var(--ios-glass-border);
+  box-shadow:
+    0 0 0 0.5px var(--ios-glass-shadow),
+    0 4px 24px var(--ios-glass-shadow);
+  transition: all var(--ios-duration-base) var(--ios-spring);
+  padding: var(--ios-space-2xl);
+  box-sizing: border-box;
+  animation: cardSlideIn 0.5s var(--ios-spring) backwards;
+}
+
+.ios-pomodoro-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 0.5px var(--ios-glass-shadow),
+    0 8px 32px var(--ios-glass-shadow);
+}
+
+@keyframes cardSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 右侧 TodoList 卡片容器 */
+.ios-todo-card {
+  flex: 1;
+  min-width: 0;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-glass-bg);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-radius: var(--ios-radius-large);
+  border: 1px solid var(--ios-glass-border);
+  box-shadow:
+    0 0 0 0.5px var(--ios-glass-shadow),
+    0 4px 24px var(--ios-glass-shadow);
+  padding: var(--ios-space-xl);
+  box-sizing: border-box;
+  transition: all var(--ios-duration-base) var(--ios-spring);
+  animation: cardSlideIn 0.5s var(--ios-spring) 100ms backwards;
+}
+
+.ios-todo-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 0.5px var(--ios-glass-shadow),
+    0 8px 32px var(--ios-glass-shadow);
+}
+
+/* 响应式断点 */
+
+/* 大屏 (>1200px) - 左右 1:1.5 比例 */
+@media (min-width: 1200px) {
+  .ios-pomodoro-card {
+    width: 400px;
+  }
+
+  .ios-todo-card {
+    flex: 1.5;
+  }
+}
+
+/* 中屏 (768px - 1200px) - 左右 1:1 比例 */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .ios-split-layout {
+    gap: 20px;
+    padding: 80px 20px 20px;
+  }
+
+  .ios-pomodoro-card {
+    width: 360px;
+    max-width: 360px;
+  }
+
+  .ios-todo-card {
+    flex: 1;
+  }
+}
+
+/* 小屏 (<768px) - 上下堆叠 */
+@media (max-width: 767px) {
+  .ios-split-layout {
+    flex-direction: column;
+    gap: 20px;
+    padding: 70px 16px 16px;
+  }
+
+  .ios-pomodoro-card {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .ios-todo-card {
+    width: 100%;
+  }
+}
+
+/* 超小屏 (<480px) */
+@media (max-width: 479px) {
+  .ios-split-layout {
+    gap: 16px;
+    padding: 60px 12px 12px;
+  }
+}
+
+/* 卡片毛玻璃容器样式 (可应用到两个卡片) */
+.ios-card-wrapper {
+  background: var(--ios-glass-bg);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-radius: var(--ios-radius-large);
+  border: 1px solid var(--ios-glass-border);
+  box-shadow:
+    0 0 0 0.5px var(--ios-glass-shadow),
+    0 4px 24px var(--ios-glass-shadow);
+  transition: all var(--ios-duration-base) var(--ios-spring);
+}
+
+.ios-card-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 0.5px var(--ios-glass-shadow),
+    0 8px 32px var(--ios-glass-shadow);
+}
+
+/* 深色模式适配 */
+:root.dark .ios-card-wrapper,
+[data-theme="dark"] .ios-card-wrapper {
+  background: rgba(28, 28, 30, 0.72);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 入场动画 */
+.ios-split-layout > * {
+  animation: iosCardFadeIn var(--ios-duration-slower) var(--ios-spring) backwards;
+}
+
+.ios-pomodoro-card {
+  animation-delay: 0ms;
+}
+
+.ios-todo-card {
+  animation-delay: 100ms;
+}
+
+@keyframes iosCardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
