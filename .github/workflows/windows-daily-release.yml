@@ -55,7 +55,30 @@ jobs:
       - name: Package Windows artifact
         run: |
           mkdir -p artifacts
-          EXE_PATH="src-tauri/target/x86_64-pc-windows-gnu/release/pomoflow-rs-tauri.exe"
+          EXE_CANDIDATES=(
+            "src-tauri/target/x86_64-pc-windows-gnu/release/pomoflow-rs-tauri.exe"
+            "src-tauri/target/x86_64-pc-windows-gnu/release/PomodoroFlow-Rs.exe"
+            "target/x86_64-pc-windows-gnu/release/pomoflow-rs-tauri.exe"
+            "target/x86_64-pc-windows-gnu/release/PomodoroFlow-Rs.exe"
+          )
+
+          EXE_PATH=""
+          for candidate in "${EXE_CANDIDATES[@]}"; do
+            if [ -f "$candidate" ]; then
+              EXE_PATH="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$EXE_PATH" ]; then
+            echo "Windows executable not found. Checked:"
+            printf '  - %s\n' "${EXE_CANDIDATES[@]}"
+            echo "Debug listing:"
+            find src-tauri/target target -maxdepth 4 -type f -name "*.exe" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Using executable: $EXE_PATH"
           cp "$EXE_PATH" "artifacts/PomodoroFlow-Rs.exe"
           (
             cd artifacts
