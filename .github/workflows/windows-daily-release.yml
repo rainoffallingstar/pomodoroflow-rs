@@ -1,0 +1,89 @@
+name: Windows Daily Release
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-daily-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install Linux deps for Windows cross build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mingw-w64 \
+            nsis \
+            zip
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Windows executable (cross-compile)
+        run: npm run tauri build -- --target x86_64-pc-windows-gnu --bundles none
+
+      - name: Prepare artifact metadata
+        id: meta
+        run: |
+          DATE_TAG="$(TZ=Asia/Shanghai date +%Y-%m-%d)"
+          echo "date_tag=${DATE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=PomodoroFlow-Rs-windows-x64-${DATE_TAG}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Package Windows artifact
+        run: |
+          mkdir -p artifacts
+          EXE_PATH="src-tauri/target/x86_64-pc-windows-gnu/release/pomoflow-rs-tauri.exe"
+          cp "$EXE_PATH" "artifacts/PomodoroFlow-Rs.exe"
+          (
+            cd artifacts
+            zip -9 "${{ steps.meta.outputs.artifact_name }}" "PomodoroFlow-Rs.exe"
+            rm -f "PomodoroFlow-Rs.exe"
+          )
+
+      - name: Move daily tag to current commit
+        env:
+          DATE_TAG: ${{ steps.meta.outputs.date_tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$DATE_TAG"
+          git push origin "refs/tags/$DATE_TAG" --force
+
+      - name: Create or update daily release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.meta.outputs.date_tag }}
+          name: Daily Windows Build ${{ steps.meta.outputs.date_tag }}
+          body: |
+            Auto-built from `${{ github.sha }}` on push.
+            - Platform: Windows x64
+            - Compiler host: Linux (cross-compile)
+          artifacts: artifacts/${{ steps.meta.outputs.artifact_name }}
+          artifactErrorsFailBuild: true
+          allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          token: ${{ secrets.GITHUB_TOKEN }}
