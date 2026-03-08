@@ -79,11 +79,25 @@ jobs:
           fi
 
           echo "Using executable: $EXE_PATH"
+          EXE_DIR="$(dirname "$EXE_PATH")"
           cp "$EXE_PATH" "artifacts/PomodoroFlow-Rs.exe"
+
+          # Package runtime DLLs next to the executable (e.g. WebView2Loader.dll / MinGW runtime).
+          shopt -s nullglob
+          DLLS=("$EXE_DIR"/*.dll)
+          if [ "${#DLLS[@]}" -gt 0 ]; then
+            echo "Including DLLs:"
+            printf '  - %s\n' "${DLLS[@]}"
+            cp "${DLLS[@]}" artifacts/
+          else
+            echo "No DLLs found in $EXE_DIR"
+          fi
+          shopt -u nullglob
+
           (
             cd artifacts
-            zip -9 "${{ steps.meta.outputs.artifact_name }}" "PomodoroFlow-Rs.exe"
-            rm -f "PomodoroFlow-Rs.exe"
+            zip -9 "${{ steps.meta.outputs.artifact_name }}" ./*
+            rm -f ./*
           )
 
       - name: Move daily tag to current commit
