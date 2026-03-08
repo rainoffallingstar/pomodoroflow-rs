@@ -19,6 +19,28 @@ fn todo_status_to_db_string(status: &TodoStatus) -> &str {
     }
 }
 
+fn row_to_todo(row: &rusqlite::Row<'_>) -> rusqlite::Result<Todo> {
+    let status_str: String = row.get("status")?;
+    let status = match status_str.as_str() {
+        "todo" => TodoStatus::Todo,
+        "in_progress" => TodoStatus::InProgress,
+        "done" => TodoStatus::Done,
+        _ => TodoStatus::Todo,
+    };
+
+    Ok(Todo {
+        id: row.get("id")?,
+        title: row.get("title")?,
+        description: row.get("description")?,
+        status,
+        github_issue_id: row.get("github_issue_id")?,
+        github_project_id: row.get("github_project_id")?,
+        github_issue_number: row.get("github_issue_number")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
 /// 线程安全的数据库连接包装器
 #[derive(Debug, Clone)]
 pub struct Database {
@@ -90,7 +112,7 @@ impl Database {
             )
             .unwrap_or(0);
 
-        const CURRENT_SCHEMA_VERSION: i32 = 2;
+        const CURRENT_SCHEMA_VERSION: i32 = 3;
 
         // 如果已经是最新版本，跳过迁移
         if current_version >= CURRENT_SCHEMA_VERSION {
@@ -112,6 +134,7 @@ impl Database {
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     github_token_encrypted TEXT NOT NULL,
                     github_username TEXT NOT NULL,
+                    last_sync_cursor TEXT,
                     selected_project_owner TEXT,
                     selected_project_repo TEXT,
                     selected_project_number INTEGER,
@@ -287,6 +310,39 @@ impl Database {
             println!("✅ 数据库迁移到版本2完成（标签功能）");
         }
 
+        // 版本3：增加同步游标
+        if current_version < 3 {
+            let table_has_cursor = {
+                let mut stmt = conn
+                    .prepare("PRAGMA table_info(user_config)")
+                    .map_err(AppError::Database)?;
+                let rows = stmt
+                    .query_map([], |row| row.get::<_, String>(1))
+                    .map_err(AppError::Database)?;
+                let mut found = false;
+                for col in rows {
+                    if col.map_err(AppError::Database)? == "last_sync_cursor" {
+                        found = true;
+                        break;
+                    }
+                }
+                found
+            };
+
+            if !table_has_cursor {
+                conn.execute_batch("ALTER TABLE user_config ADD COLUMN last_sync_cursor TEXT")
+                    .map_err(AppError::Database)?;
+            }
+
+            conn.execute(
+                "INSERT OR REPLACE INTO schema_version (version) VALUES (3)",
+                [],
+            )
+            .map_err(AppError::Database)?;
+
+            println!("✅ 数据库迁移到版本3完成（同步游标）");
+        }
+
         Ok(())
     }
 
@@ -308,17 +364,25 @@ impl Database {
                 r#"
                 INSERT OR REPLACE INTO user_config (
                     id, github_token_encrypted, github_username,
+                    last_sync_cursor,
                     selected_project_owner, selected_project_repo, selected_project_number,
                     pomodoro_work_duration, pomodoro_short_break_duration,
                     pomodoro_long_break_duration, pomodoro_cycles_until_long_break,
                     notifications_enabled, sound_enabled, system_notifications, theme
                 ) VALUES (
-                    1, '', '', NULL, NULL, NULL,
-                    ?1, ?2, ?3, ?4,
-                    ?5, ?6, 0, ?7
+                    1, ?1, ?2, ?3,
+                    ?4, ?5, ?6,
+                    ?7, ?8, ?9, ?10,
+                    ?11, ?12, 0, ?13
                 )
                 "#,
                 params![
+                    config.github_token_encrypted,
+                    config.github_username,
+                    config.last_sync_cursor,
+                    config.selected_project_owner,
+                    config.selected_project_repo,
+                    config.selected_project_number,
                     config.pomodoro_work_duration,
                     config.pomodoro_short_break_duration,
                     config.pomodoro_long_break_duration,
@@ -350,6 +414,9 @@ impl Database {
                 .prepare(
                     r#"
                 SELECT
+                    github_token_encrypted, github_username,
+                    last_sync_cursor,
+                    selected_project_owner, selected_project_repo, selected_project_number,
                     pomodoro_work_duration, pomodoro_short_break_duration,
                     pomodoro_long_break_duration, pomodoro_cycles_until_long_break,
                     notifications_enabled, sound_enabled, theme
@@ -361,6 +428,12 @@ impl Database {
             let config_iter = stmt
                 .query_map([], |row| {
                     Ok(UserConfig {
+                        github_token_encrypted: row.get("github_token_encrypted")?,
+                        github_username: row.get("github_username")?,
+                        last_sync_cursor: row.get("last_sync_cursor")?,
+                        selected_project_owner: row.get("selected_project_owner")?,
+                        selected_project_repo: row.get("selected_project_repo")?,
+                        selected_project_number: row.get("selected_project_number")?,
                         pomodoro_work_duration: row.get("pomodoro_work_duration")?,
                         pomodoro_short_break_duration: row.get("pomodoro_short_break_duration")?,
                         pomodoro_long_break_duration: row.get("pomodoro_long_break_duration")?,
@@ -405,7 +478,14 @@ impl Database {
                 INSERT INTO todos (id, title, description, status, created_at, updated_at)
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                 "#,
-                params![id, new_todo.title, new_todo.description, todo_status_to_db_string(&new_todo.status), now, now],
+                params![
+                    id,
+                    new_todo.title,
+                    new_todo.description,
+                    todo_status_to_db_string(&new_todo.status),
+                    now,
+                    now
+                ],
             )
             .map_err(AppError::Database)?;
 
@@ -417,6 +497,9 @@ impl Database {
                 title: new_todo.title.clone(),
                 description: new_todo.description.clone(),
                 status: new_todo.status.clone(),
+                github_issue_id: None,
+                github_project_id: None,
+                github_issue_number: None,
                 created_at: now,
                 updated_at: now,
             })
@@ -438,24 +521,7 @@ impl Database {
                 .map_err(AppError::Database)?;
 
             let todo_iter = stmt
-                .query_map([], |row| {
-                    let status_str: String = row.get("status")?;
-                    let status = match status_str.as_str() {
-                        "todo" => TodoStatus::Todo,
-                        "in_progress" => TodoStatus::InProgress,
-                        "done" => TodoStatus::Done,
-                        _ => TodoStatus::Todo,
-                    };
-
-                    Ok(Todo {
-                        id: row.get("id")?,
-                        title: row.get("title")?,
-                        description: row.get("description")?,
-                        status,
-                        created_at: row.get("created_at")?,
-                        updated_at: row.get("updated_at")?,
-                    })
-                })
+                .query_map([], row_to_todo)
                 .map_err(AppError::Database)?;
 
             let mut todos = Vec::new();
@@ -485,22 +551,7 @@ impl Database {
             let mut rows = stmt.query(params![id]).map_err(AppError::Database)?;
 
             if let Some(row) = rows.next().map_err(AppError::Database)? {
-                let status_str: String = row.get("status")?;
-                let status = match status_str.as_str() {
-                    "todo" => TodoStatus::Todo,
-                    "in_progress" => TodoStatus::InProgress,
-                    "done" => TodoStatus::Done,
-                    _ => TodoStatus::Todo,
-                };
-
-                return Ok(Some(Todo {
-                    id: row.get("id")?,
-                    title: row.get("title")?,
-                    description: row.get("description")?,
-                    status,
-                    created_at: row.get("created_at")?,
-                    updated_at: row.get("updated_at")?,
-                }));
+                return Ok(Some(row_to_todo(row).map_err(AppError::Database)?));
             }
 
             Ok(None)
@@ -546,7 +597,31 @@ impl Database {
             if let Some(ref status) = updates.status {
                 tx.execute(
                     "UPDATE todos SET status = ?, updated_at = ? WHERE id = ?",
-                    params![status.to_string(), Utc::now(), id],
+                    params![todo_status_to_db_string(status), Utc::now(), id],
+                )
+                .map_err(AppError::Database)?;
+            }
+
+            if let Some(ref github_issue_id) = updates.github_issue_id {
+                tx.execute(
+                    "UPDATE todos SET github_issue_id = ?, updated_at = ? WHERE id = ?",
+                    params![github_issue_id, Utc::now(), id],
+                )
+                .map_err(AppError::Database)?;
+            }
+
+            if let Some(ref github_project_id) = updates.github_project_id {
+                tx.execute(
+                    "UPDATE todos SET github_project_id = ?, updated_at = ? WHERE id = ?",
+                    params![github_project_id, Utc::now(), id],
+                )
+                .map_err(AppError::Database)?;
+            }
+
+            if let Some(ref github_issue_number) = updates.github_issue_number {
+                tx.execute(
+                    "UPDATE todos SET github_issue_number = ?, updated_at = ? WHERE id = ?",
+                    params![github_issue_number, Utc::now(), id],
                 )
                 .map_err(AppError::Database)?;
             }
@@ -561,22 +636,7 @@ impl Database {
             let mut rows = stmt.query(params![id]).map_err(AppError::Database)?;
 
             if let Some(row) = rows.next().map_err(AppError::Database)? {
-                let status_str: String = row.get("status")?;
-                let status = match status_str.as_str() {
-                    "todo" => TodoStatus::Todo,
-                    "in_progress" => TodoStatus::InProgress,
-                    "done" => TodoStatus::Done,
-                    _ => TodoStatus::Todo,
-                };
-
-                return Ok(Some(Todo {
-                    id: row.get("id")?,
-                    title: row.get("title")?,
-                    description: row.get("description")?,
-                    status,
-                    created_at: row.get("created_at")?,
-                    updated_at: row.get("updated_at")?,
-                }));
+                return Ok(Some(row_to_todo(row).map_err(AppError::Database)?));
             }
 
             Ok(None)
@@ -639,24 +699,7 @@ impl Database {
                 .map_err(AppError::Database)?;
 
             let todo_iter = stmt
-                .query_map([], |row| {
-                    let status_str: String = row.get("status")?;
-                    let status = match status_str.as_str() {
-                        "todo" => TodoStatus::Todo,
-                        "in_progress" => TodoStatus::InProgress,
-                        "done" => TodoStatus::Done,
-                        _ => TodoStatus::Todo,
-                    };
-
-                    Ok(Todo {
-                        id: row.get("id")?,
-                        title: row.get("title")?,
-                        description: row.get("description")?,
-                        status,
-                        created_at: row.get("created_at")?,
-                        updated_at: row.get("updated_at")?,
-                    })
-                })
+                .query_map([], row_to_todo)
                 .map_err(AppError::Database)?;
 
             let mut todos = Vec::new();
@@ -741,6 +784,20 @@ impl Database {
         }
 
         Ok(items)
+    }
+
+    /// 检查某条记录是否仍有待处理同步
+    pub async fn has_pending_sync_for_record(&self, record_id: &str) -> Result<bool> {
+        let conn = self.get_conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT COUNT(*) FROM sync_queue WHERE record_id = ?1 AND status = 'pending'",
+            )
+            .map_err(AppError::Database)?;
+        let count: i64 = stmt
+            .query_row(params![record_id], |row| row.get(0))
+            .map_err(AppError::Database)?;
+        Ok(count > 0)
     }
 
     /// 标记同步队列项为已同步
@@ -861,16 +918,16 @@ impl Database {
     // ========================================================================
 
     /// 创建标签
-    pub async fn create_tag(&self, name: &str, color: &str) -> Result<(String, String)> {
+    pub async fn create_tag(&self, name: &str, color: &str) -> Result<(String, String, String)> {
         let conn = Arc::clone(&self.conn);
         let name = name.to_string();
         let color = color.to_string();
-        
+
         tokio::task::spawn_blocking(move || {
-            let mut conn = conn
+            let conn = conn
                 .lock()
                 .map_err(|e| AppError::Other(format!("Failed to lock database: {}", e)))?;
-            
+
             let id = uuid::Uuid::new_v4().to_string();
             let now = Utc::now();
 
@@ -880,7 +937,7 @@ impl Database {
             )
             .map_err(AppError::Database)?;
 
-            Ok((id, name))
+            Ok((id, name, color))
         })
         .await
         .map_err(|e| AppError::Other(e.to_string()))?
@@ -889,7 +946,7 @@ impl Database {
     /// 获取所有标签
     pub async fn get_all_tags(&self) -> Result<Vec<(String, String, String)>> {
         let conn = Arc::clone(&self.conn);
-        
+
         tokio::task::spawn_blocking(move || {
             let conn = conn
                 .lock()
@@ -902,11 +959,7 @@ impl Database {
             let mut tags = Vec::new();
             let rows = stmt
                 .query_map([], |row| {
-                    Ok((
-                        row.get("id")?,
-                        row.get("name")?,
-                        row.get("color")?,
-                    ))
+                    Ok((row.get("id")?, row.get("name")?, row.get("color")?))
                 })
                 .map_err(AppError::Database)?;
 
@@ -924,7 +977,7 @@ impl Database {
     pub async fn delete_tag(&self, id: &str) -> Result<bool> {
         let conn = Arc::clone(&self.conn);
         let id = id.to_string();
-        
+
         tokio::task::spawn_blocking(move || {
             let conn = conn
                 .lock()
@@ -945,12 +998,12 @@ impl Database {
         let conn = Arc::clone(&self.conn);
         let todo_id = todo_id.to_string();
         let tag_id = tag_id.to_string();
-        
+
         tokio::task::spawn_blocking(move || {
             let conn = conn
                 .lock()
                 .map_err(|e| AppError::Other(format!("Failed to lock database: {}", e)))?;
-            
+
             // 使用 INSERT OR IGNORE 避免重复
             conn.execute(
                 "INSERT OR IGNORE INTO todo_tags (todo_id, tag_id) VALUES (?1, ?2)",
@@ -969,7 +1022,7 @@ impl Database {
         let conn = Arc::clone(&self.conn);
         let todo_id = todo_id.to_string();
         let tag_id = tag_id.to_string();
-        
+
         tokio::task::spawn_blocking(move || {
             let conn = conn
                 .lock()
@@ -991,7 +1044,7 @@ impl Database {
     pub async fn get_todo_tags(&self, todo_id: &str) -> Result<Vec<(String, String, String)>> {
         let conn = Arc::clone(&self.conn);
         let todo_id = todo_id.to_string();
-        
+
         tokio::task::spawn_blocking(move || {
             let conn = conn
                 .lock()
@@ -1002,18 +1055,14 @@ impl Database {
                     "SELECT t.id, t.name, t.color FROM tags t 
                      INNER JOIN todo_tags tt ON t.id = tt.tag_id 
                      WHERE tt.todo_id = ?1 
-                     ORDER BY t.created_at DESC"
+                     ORDER BY t.created_at DESC",
                 )
                 .map_err(AppError::Database)?;
 
             let mut tags = Vec::new();
             let rows = stmt
                 .query_map(params![todo_id], |row| {
-                    Ok((
-                        row.get("id")?,
-                        row.get("name")?,
-                        row.get("color")?,
-                    ))
+                    Ok((row.get("id")?, row.get("name")?, row.get("color")?))
                 })
                 .map_err(AppError::Database)?;
 

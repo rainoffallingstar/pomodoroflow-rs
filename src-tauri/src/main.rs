@@ -69,11 +69,18 @@ fn main() {
             match result {
                 Ok(_) => {
                     println!("✅ Tauri Setup 完成，状态已就绪");
+                    if let Err(e) = app.emit_all("initialization-complete", "ok") {
+                        eprintln!("Failed to emit initialization-complete: {}", e);
+                    }
                     Ok(())
                 }
                 Err(e) => {
                     eprintln!("❌ Tauri Setup 失败: {}", e);
-                    Err(format!("Failed to initialize app: {}", e).into())
+                    let err_msg = format!("Failed to initialize app: {}", e);
+                    if let Err(emit_err) = app.emit_all("initialization-error", err_msg.clone()) {
+                        eprintln!("Failed to emit initialization-error: {}", emit_err);
+                    }
+                    Err(err_msg.into())
                 }
             }
         })
@@ -91,6 +98,9 @@ fn main() {
             update_todo,
             delete_todo,
             toggle_todo_status,
+            set_todo_status,
+            link_todo_github,
+            clear_todo_github_link,
             get_todos,
             get_todo_stats,
             // 标签命令
@@ -102,7 +112,10 @@ fn main() {
             get_todo_tags,
             // 配置管理命令
             get_user_config,
-            save_user_config
+            get_github_sync_config,
+            save_user_config,
+            // 同步命令
+            run_github_sync
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {
@@ -217,17 +230,23 @@ async fn start_event_system(
                             }
                         }
 
-                        // 检查是否完成了一个阶段
-                        if pomodoro_session.remaining == 0 {
-                            if let Err(e) = app_handle_clone
-                                .emit_all("pomodoro-phase-completed", &pomodoro_session) {
-                                eprintln!("Failed to emit pomodoro-phase-completed event: {}", e);
-                            }
+                        // 通过“上一拍运行中 + 阶段发生变化”的边沿检测阶段完成。
+                        // 兼容后端自动启动下一阶段（阶段切换时仍保持 is_running=true）。
+                        if let Some(last) = &last_session {
+                            let phase_completed =
+                                last.is_running &&
+                                (pomodoro_session.phase != last.phase || pomodoro_session.cycle_count != last.cycle_count);
 
-                            // 自动显示通知
-                            let phase_str = format!("{:?}", pomodoro_session.phase);
-                            if let Err(e) = app_handle_clone.emit_all("show-pomodoro-notification", &phase_str) {
-                                eprintln!("Failed to emit show-pomodoro-notification event: {}", e);
+                            if phase_completed {
+                                if let Err(e) = app_handle_clone
+                                    .emit_all("pomodoro-phase-completed", &pomodoro_session) {
+                                    eprintln!("Failed to emit pomodoro-phase-completed event: {}", e);
+                                }
+
+                                let phase_str = format!("{:?}", pomodoro_session.phase);
+                                if let Err(e) = app_handle_clone.emit_all("show-pomodoro-notification", &phase_str) {
+                                    eprintln!("Failed to emit show-pomodoro-notification event: {}", e);
+                                }
                             }
                         }
 

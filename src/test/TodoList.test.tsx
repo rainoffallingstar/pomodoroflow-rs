@@ -1,15 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { act } from "react";
 import { TodoList } from "../components/TodoList";
 import { useAppStore } from "../stores/appStore";
 
-// Mock the store
 vi.mock("../stores/appStore", () => ({
   useAppStore: vi.fn(),
 }));
 
 describe("TodoList", () => {
-  it("renders the todo list component", () => {
+  it("renders todo title", () => {
     const mockStore = {
       todos: [
         {
@@ -21,45 +22,59 @@ describe("TodoList", () => {
           updated_at: new Date().toISOString(),
         },
       ],
-      loadTodos: vi.fn(),
       createTodo: vi.fn(),
       updateTodo: vi.fn(),
       deleteTodo: vi.fn(),
       toggleTodoStatus: vi.fn(),
+      setTodoStatus: vi.fn(),
+      linkTodoGithub: vi.fn(),
+      clearTodoGithubLink: vi.fn(),
+      loadTags: vi.fn(),
+      assignTagToTodo: vi.fn(),
+      tags: [],
     };
 
-    vi.mocked(useAppStore).mockReturnValue(mockStore);
-
+    vi.mocked(useAppStore).mockReturnValue(mockStore as any);
     render(<TodoList />);
 
     expect(screen.getByText("Todo List")).toBeInTheDocument();
     expect(screen.getByText("Test Todo 1")).toBeInTheDocument();
   });
 
-  it("calls createTodo when new todo is submitted", async () => {
+  it("calls createTodo when Add clicked", async () => {
+    const user = userEvent.setup();
     const mockStore = {
       todos: [],
-      loadTodos: vi.fn(),
-      createTodo: vi.fn(),
+      createTodo: vi.fn(async () => ({ id: "new-id" })),
       updateTodo: vi.fn(),
       deleteTodo: vi.fn(),
       toggleTodoStatus: vi.fn(),
+      setTodoStatus: vi.fn(),
+      linkTodoGithub: vi.fn(),
+      clearTodoGithubLink: vi.fn(),
+      loadTags: vi.fn(),
+      assignTagToTodo: vi.fn(),
+      tags: [],
     };
 
-    vi.mocked(useAppStore).mockReturnValue(mockStore);
-
+    vi.mocked(useAppStore).mockReturnValue(mockStore as any);
     render(<TodoList />);
 
-    const input = screen.getByPlaceholderText("Add a new task...");
-    const button = screen.getByText("Add");
+    await act(async () => {
+      await user.type(screen.getByPlaceholderText("Add a new task..."), "New Test Todo");
+      await user.click(screen.getByRole("button", { name: "Add" }));
+    });
 
-    fireEvent.change(input, { target: { value: "New Test Todo" } });
-    fireEvent.click(button);
-
-    expect(mockStore.createTodo).toHaveBeenCalledWith("New Test Todo");
+    await waitFor(() => {
+      expect(mockStore.createTodo).toHaveBeenCalledWith(
+        "New Test Todo",
+        undefined,
+        "todo",
+      );
+    });
   });
 
-  it("calls toggleTodoStatus when checkbox is clicked", () => {
+  it("calls setTodoStatus when checkbox clicked", async () => {
     const mockStore = {
       todos: [
         {
@@ -71,37 +86,130 @@ describe("TodoList", () => {
           updated_at: new Date().toISOString(),
         },
       ],
-      loadTodos: vi.fn(),
       createTodo: vi.fn(),
       updateTodo: vi.fn(),
       deleteTodo: vi.fn(),
       toggleTodoStatus: vi.fn(),
+      setTodoStatus: vi.fn(),
+      linkTodoGithub: vi.fn(),
+      clearTodoGithubLink: vi.fn(),
+      loadTags: vi.fn(),
+      assignTagToTodo: vi.fn(),
+      tags: [],
     };
 
-    vi.mocked(useAppStore).mockReturnValue(mockStore);
-
+    vi.mocked(useAppStore).mockReturnValue(mockStore as any);
     render(<TodoList />);
 
-    const checkbox = screen.getByRole("checkbox");
-    fireEvent.click(checkbox);
-
-    expect(mockStore.toggleTodoStatus).toHaveBeenCalledWith("1");
+    fireEvent.click(screen.getByRole("checkbox"));
+    await waitFor(() => {
+      expect(mockStore.setTodoStatus).toHaveBeenCalledWith("1", "done");
+    });
   });
 
-  it("displays empty state when no todos", () => {
+  it("renders github issue badge when todo is linked", () => {
     const mockStore = {
-      todos: [],
-      loadTodos: vi.fn(),
+      todos: [
+        {
+          id: "1",
+          title: "Linked Todo",
+          description: null,
+          status: "todo",
+          github_issue_number: 42,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ],
       createTodo: vi.fn(),
       updateTodo: vi.fn(),
       deleteTodo: vi.fn(),
       toggleTodoStatus: vi.fn(),
+      setTodoStatus: vi.fn(),
+      linkTodoGithub: vi.fn(),
+      clearTodoGithubLink: vi.fn(),
+      loadTags: vi.fn(),
+      assignTagToTodo: vi.fn(),
+      tags: [],
     };
 
-    vi.mocked(useAppStore).mockReturnValue(mockStore);
-
+    vi.mocked(useAppStore).mockReturnValue(mockStore as any);
     render(<TodoList />);
 
-    expect(screen.getByText("Todo List")).toBeInTheDocument();
+    expect(screen.getByText("GitHub #42")).toBeInTheDocument();
+  });
+
+  it("calls linkTodoGithub when github link button clicked", async () => {
+    const user = userEvent.setup();
+    const promptSpy = vi
+      .spyOn(window, "prompt")
+      .mockReturnValue("101,42,7");
+    const mockStore = {
+      todos: [
+        {
+          id: "1",
+          title: "Link Me",
+          description: null,
+          status: "todo",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      createTodo: vi.fn(),
+      updateTodo: vi.fn(),
+      deleteTodo: vi.fn(),
+      toggleTodoStatus: vi.fn(),
+      setTodoStatus: vi.fn(),
+      linkTodoGithub: vi.fn(),
+      clearTodoGithubLink: vi.fn(),
+      loadTags: vi.fn(),
+      assignTagToTodo: vi.fn(),
+      tags: [],
+    };
+
+    vi.mocked(useAppStore).mockReturnValue(mockStore as any);
+    render(<TodoList />);
+
+    await act(async () => {
+      await user.click(screen.getByTitle("绑定 GitHub Issue"));
+    });
+
+    expect(mockStore.linkTodoGithub).toHaveBeenCalledWith("1", 101, 42, 7);
+    promptSpy.mockRestore();
+  });
+
+  it("calls clearTodoGithubLink when github unlink button clicked", async () => {
+    const user = userEvent.setup();
+    const mockStore = {
+      todos: [
+        {
+          id: "1",
+          title: "Unlink Me",
+          description: null,
+          status: "todo",
+          github_issue_number: 42,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      createTodo: vi.fn(),
+      updateTodo: vi.fn(),
+      deleteTodo: vi.fn(),
+      toggleTodoStatus: vi.fn(),
+      setTodoStatus: vi.fn(),
+      linkTodoGithub: vi.fn(),
+      clearTodoGithubLink: vi.fn(),
+      loadTags: vi.fn(),
+      assignTagToTodo: vi.fn(),
+      tags: [],
+    };
+
+    vi.mocked(useAppStore).mockReturnValue(mockStore as any);
+    render(<TodoList />);
+
+    await act(async () => {
+      await user.click(screen.getByTitle("清除 GitHub 关联"));
+    });
+
+    expect(mockStore.clearTodoGithubLink).toHaveBeenCalledWith("1");
   });
 });

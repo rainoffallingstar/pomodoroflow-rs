@@ -73,8 +73,8 @@ pub fn validate_theme(theme: &str) -> Result<(), CommandError> {
     if theme.trim().is_empty() {
         return Err(CommandError::Validation("主题不能为空".to_string()));
     }
-    if !["light", "dark", "auto"].contains(&theme) {
-        return Err(CommandError::Validation("主题必须是 light、dark 或 auto".to_string()));
+    if !["light", "dark", "system"].contains(&theme) {
+        return Err(CommandError::Validation("主题必须是 light、dark 或 system".to_string()));
     }
     Ok(())
 }
@@ -121,7 +121,8 @@ mod tests {
     fn test_validate_theme() {
         assert!(validate_theme("light").is_ok());
         assert!(validate_theme("dark").is_ok());
-        assert!(validate_theme("auto").is_ok());
+        assert!(validate_theme("system").is_ok());
+        assert!(validate_theme("auto").is_err());
         assert!(validate_theme("invalid").is_err());
     }
 }

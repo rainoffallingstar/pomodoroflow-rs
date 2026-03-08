@@ -12,9 +12,11 @@ interface SettingsPanelProps {
  * - Toggle 开关
  */
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
-  const { userConfig, saveUserConfig, loadUserConfig } = useAppStore();
+  const { userConfig, saveUserConfig, loadUserConfig, runGithubSync } = useAppStore();
   const [localConfig, setLocalConfig] = useState<UserConfig | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncChecking, setIsSyncChecking] = useState(false);
+  const [isSyncRunning, setIsSyncRunning] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -52,6 +54,47 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     }
   };
 
+  const handleSyncCheck = async () => {
+    setIsSyncChecking(true);
+    setMessage(null);
+    try {
+      const report = await runGithubSync(true);
+      setMessage({
+        type: "success",
+        text: `同步检查完成：待处理 ${report.pending_items} 项，支持 ${report.supported_items} 项`,
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "同步检查失败",
+      });
+    } finally {
+      setIsSyncChecking(false);
+    }
+  };
+
+  const handleSyncRun = async () => {
+    setIsSyncRunning(true);
+    setMessage(null);
+    try {
+      const report = await runGithubSync(false);
+      const hasErrors = report.errors.length > 0;
+      setMessage({
+        type: hasErrors ? "error" : "success",
+        text: hasErrors
+          ? `同步完成，但有 ${report.errors.length} 条错误（已记录队列状态）`
+          : `同步完成：处理 ${report.supported_items} 项`,
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "执行同步失败",
+      });
+    } finally {
+      setIsSyncRunning(false);
+    }
+  };
+
   const handleToggle = (field: keyof UserConfig) => {
     if (!localConfig) return;
     setLocalConfig({
@@ -62,7 +105,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   const handleInputChange = (
     field: keyof UserConfig,
-    value: string | number | boolean,
+    value: string | number | boolean | null,
   ) => {
     if (!localConfig) return;
     setLocalConfig({
@@ -211,7 +254,106 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </div>
         </div>
 
+        {/* GitHub Project 设置 */}
+        <div className="ios-settings-section">
+          <div className="ios-settings-section-title">GitHub Project</div>
+          <div className="ios-setting-group">
+            <div className="ios-setting-item">
+              <span className="ios-setting-label">Username</span>
+              <input
+                type="text"
+                className="ios-setting-input"
+                value={localConfig.github_username ?? ""}
+                onChange={(e) =>
+                  handleInputChange(
+                    "github_username",
+                    e.target.value.trim(),
+                  )
+                }
+                placeholder="your-username"
+              />
+            </div>
+            <div className="ios-setting-item">
+              <span className="ios-setting-label">Token</span>
+              <input
+                type="password"
+                className="ios-setting-input"
+                value={localConfig.github_token_encrypted ?? ""}
+                onChange={(e) =>
+                  handleInputChange(
+                    "github_token_encrypted",
+                    e.target.value.trim(),
+                  )
+                }
+                placeholder="ghp_xxx or github_pat_xxx"
+              />
+            </div>
+            <div className="ios-setting-item">
+              <span className="ios-setting-label">Owner</span>
+              <input
+                type="text"
+                className="ios-setting-input"
+                value={localConfig.selected_project_owner ?? ""}
+                onChange={(e) =>
+                  handleInputChange(
+                    "selected_project_owner",
+                    e.target.value.trim() || null,
+                  )
+                }
+                placeholder="your-org"
+              />
+            </div>
+            <div className="ios-setting-item">
+              <span className="ios-setting-label">Repo</span>
+              <input
+                type="text"
+                className="ios-setting-input"
+                value={localConfig.selected_project_repo ?? ""}
+                onChange={(e) =>
+                  handleInputChange(
+                    "selected_project_repo",
+                    e.target.value.trim() || null,
+                  )
+                }
+                placeholder="your-repo"
+              />
+            </div>
+            <div className="ios-setting-item">
+              <span className="ios-setting-label">Project #</span>
+              <input
+                type="number"
+                className="ios-setting-input"
+                value={localConfig.selected_project_number ?? ""}
+                onChange={(e) =>
+                  handleInputChange(
+                    "selected_project_number",
+                    e.target.value ? parseInt(e.target.value, 10) : null,
+                  )
+                }
+                min="1"
+                placeholder="1"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* 保存按钮 */}
+        <button
+          className={`ios-btn ${isSyncChecking || isSyncRunning ? "disabled" : ""}`}
+          onClick={handleSyncCheck}
+          disabled={isSyncChecking || isSyncRunning}
+        >
+          {isSyncChecking ? "检查中..." : "检查 GitHub 同步队列"}
+        </button>
+
+        <button
+          className={`ios-btn ${isSyncChecking || isSyncRunning ? "disabled" : ""}`}
+          onClick={handleSyncRun}
+          disabled={isSyncChecking || isSyncRunning}
+        >
+          {isSyncRunning ? "同步中..." : "执行 GitHub 同步"}
+        </button>
+
         <button
           className={`ios-btn ios-btn-primary ${isSaving ? "disabled" : ""}`}
           onClick={handleSave}

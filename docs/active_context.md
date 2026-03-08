@@ -1,10 +1,24 @@
 # PomodoroFlow-Rs 项目状态
 
-**最后更新**: 2025-12-23
+**最后更新**: 2026-03-07
 
 ## 项目概述
 
 PomodoroFlow-Rs 是一个基于 **Tauri + React + Rust** 开发的番茄钟桌面应用，提供专注计时和本地任务管理功能。
+
+## 2026-03 重构进度快照
+
+- 已完成: 命令层错误契约统一为 `CommandResult { success, data, error, error_code }`，前端统一解析并保留错误码。
+- 已完成: 番茄钟阶段自动切换由后端状态机负责，前端只消费状态；事件系统支持阶段边沿检测。
+- 已完成: 配置保存链路支持运行时同步失败回滚，避免“落盘成功但运行态失败”。
+- 已完成: `Todo` 重新接回 GitHub 关联字段（`github_issue_id/github_issue_number/github_project_id`），数据库读写一致。
+- 已完成: 新增 GitHub 关联命令 `link_todo_github` 与 `clear_todo_github_link`，并接入前端 store action。
+- 已完成: 用户配置新增 GitHub Project 三元组（`selected_project_owner/repo/number`）并打通设置面板与数据库持久化。
+- 已完成: 新增 `get_github_sync_config` 命令，后端可直接读取完整 GitHub 同步配置。
+- 已完成: 新增 `run_github_sync` 命令（dry-run），可读取并分析 `sync_queue`，输出支持/不支持/无效项统计。
+- 已完成: 设置页增加“检查 GitHub 同步队列”按钮，前端可直接触发 dry-run 并展示结果。
+- 已完成: 回归测试通过（Rust 核心 + 前端 Vitest）。
+- 进行中: 真正的 GitHub API 同步（鉴权、拉取 Project item、双向冲突处理）尚未接入。
 
 ## 核心功能
 
@@ -155,6 +169,9 @@ pomoflow-rs/
 - `update_todo(id, updates)` - 更新任务
 - `delete_todo(id)` - 删除任务
 - `toggle_todo_status(id)` - 切换状态
+- `set_todo_status(id, status)` - 显式设置状态
+- `link_todo_github(id, issue_id, issue_number, project_id)` - 关联 GitHub 元数据
+- `clear_todo_github_link(id)` - 清除 GitHub 关联
 - `get_todo_stats()` - 获取统计
 
 ### 配置命令
@@ -227,7 +244,8 @@ npm run tauri build
 
 ## 已知问题
 
-无关键问题。应用功能完整，性能稳定。
+- `src-tauri` 全量测试在当前环境受系统依赖限制（缺少 `libsoup-2.4`）无法完整执行。
+- 前端测试仍有 `ReactDOMTestUtils.act` 的依赖告警（来自测试栈），不影响当前功能正确性。
 
 ## 未来计划
 

@@ -48,10 +48,7 @@ pub enum AppError {
 impl AppError {
     /// 判断错误是否可重试
     pub fn is_retryable(&self) -> bool {
-        matches!(
-            self,
-            AppError::Network(_) | AppError::Timeout
-        )
+        matches!(self, AppError::Network(_) | AppError::Timeout)
     }
 
     /// 判断是否是认证错误
@@ -62,24 +59,15 @@ impl AppError {
     /// Get user-friendly error message
     pub fn user_message(&self) -> String {
         match self {
-            AppError::Database(_) =>
-                "Local database error, please restart the app".to_string(),
-            AppError::Network(_) =>
-                "Network error, please check connection".to_string(),
-            AppError::Authentication(_) =>
-                "Authentication failed".to_string(),
-            AppError::Timeout =>
-                "Request timeout, please check connection".to_string(),
-            AppError::Validation(msg) =>
-                format!("Input validation failed: {}", msg),
-            AppError::NotFound(msg) =>
-                format!("Not found: {}", msg),
-            AppError::InvalidState(msg) =>
-                format!("State error: {}", msg),
-            AppError::Serialization(_) =>
-                "Data serialization error".to_string(),
-            _ =>
-                format!("Unknown error: {}", self),
+            AppError::Database(_) => "Local database error, please restart the app".to_string(),
+            AppError::Network(_) => "Network error, please check connection".to_string(),
+            AppError::Authentication(_) => "Authentication failed".to_string(),
+            AppError::Timeout => "Request timeout, please check connection".to_string(),
+            AppError::Validation(msg) => format!("Input validation failed: {}", msg),
+            AppError::NotFound(msg) => format!("Not found: {}", msg),
+            AppError::InvalidState(msg) => format!("State error: {}", msg),
+            AppError::Serialization(_) => "Data serialization error".to_string(),
+            _ => format!("Unknown error: {}", self),
         }
     }
 

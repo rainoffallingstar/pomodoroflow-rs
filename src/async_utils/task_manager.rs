@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::future::Future;
 
 use std::sync::Arc;
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::core::error::{AppError, Result};
@@ -45,7 +45,6 @@ impl TaskMetadata {
 #[derive(Debug)]
 pub struct TaskManager {
     tasks: Arc<Mutex<HashMap<String, (JoinHandle<Result<()>>, TaskMetadata)>>>,
-    shutdown_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
 }
 
 // 安全实现 Send，因为所有字段都是 Arc 包装的
@@ -56,16 +55,11 @@ impl TaskManager {
     pub fn new() -> Self {
         Self {
             tasks: Arc::new(Mutex::new(HashMap::new())),
-            shutdown_tx: Arc::new(Mutex::new(None)),
         }
     }
 
     /// 启动后台任务
-    pub async fn spawn<F, Fut>(
-        &self,
-        name: String,
-        future: F,
-    ) -> Result<()>
+    pub async fn spawn<F, Fut>(&self, name: String, future: F) -> Result<()>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<()>> + Send + 'static,
@@ -73,10 +67,7 @@ impl TaskManager {
         let mut tasks = self.tasks.lock().await;
 
         if tasks.contains_key(&name) {
-            return Err(AppError::InvalidState(format!(
-                "任务 '{}' 已存在",
-                name
-            )));
+            return Err(AppError::InvalidState(format!("任务 '{}' 已存在", name)));
         }
 
         let handle = tokio::spawn(future());
@@ -100,17 +91,19 @@ impl TaskManager {
     }
 
     /// 等待任务完成
-    pub async fn wait(&self, name: &str, timeout: Option<std::time::Duration>) -> Result<Option<Result<()>>> {
+    pub async fn wait(
+        &self,
+        name: &str,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<Option<Result<()>>> {
         let mut tasks = self.tasks.lock().await;
 
         if let Some((handle, _metadata)) = tasks.get_mut(name) {
             if let Some(timeout) = timeout {
                 match tokio::time::timeout(timeout, handle).await {
-                    Ok(join_result) => {
-                        match join_result {
-                            Ok(task_result) => Ok(Some(task_result)),
-                            Err(e) => Err(AppError::TaskError(e.to_string())),
-                        }
+                    Ok(join_result) => match join_result {
+                        Ok(task_result) => Ok(Some(task_result)),
+                        Err(e) => Err(AppError::TaskError(e.to_string())),
                     },
                     Err(_) => {
                         // 超时
@@ -131,7 +124,8 @@ impl TaskManager {
     /// 获取所有任务状态
     pub async fn list_tasks(&self) -> HashMap<String, TaskMetadata> {
         let tasks = self.tasks.lock().await;
-        tasks.iter()
+        tasks
+            .iter()
             .map(|(name, (_, metadata))| (name.clone(), metadata.clone()))
             .collect()
     }
@@ -242,7 +236,9 @@ impl TaskManager {
         Fut: Future<Output = Result<()>> + Send + 'static,
     {
         let task_future = async move {
-            let _permit = semaphore.acquire().await
+            let _permit = semaphore
+                .acquire()
+                .await
                 .map_err(|e| AppError::Other(format!("获取信号量失败: {}", e)))?;
 
             future().await
@@ -285,10 +281,13 @@ mod tests {
         let manager = TaskManager::new();
         let name = "test-task".to_string();
 
-        assert!(manager.spawn(name.clone(), || async {
-            sleep(Duration::from_millis(10)).await;
-            Ok(())
-        }).await.is_ok());
+        assert!(manager
+            .spawn(name.clone(), || async {
+                sleep(Duration::from_millis(10)).await;
+                Ok(())
+            })
+            .await
+            .is_ok());
         assert!(manager.exists(&name).await);
     }
 
@@ -297,10 +296,13 @@ mod tests {
         let manager = TaskManager::new();
         let name = "cancel-test".to_string();
 
-        manager.spawn(name.clone(), || async {
-            sleep(Duration::from_secs(10)).await;
-            Ok(())
-        }).await.unwrap();
+        manager
+            .spawn(name.clone(), || async {
+                sleep(Duration::from_secs(10)).await;
+                Ok(())
+            })
+            .await
+            .unwrap();
 
         // 立即取消
         assert!(manager.cancel(&name).await.is_ok());
@@ -312,8 +314,14 @@ mod tests {
         let manager = TaskManager::new();
         let name = "duplicate-test".to_string();
 
-        assert!(manager.spawn(name.clone(), || async { Ok(()) }).await.is_ok());
-        assert!(manager.spawn(name.clone(), || async { Ok(()) }).await.is_err());
+        assert!(manager
+            .spawn(name.clone(), || async { Ok(()) })
+            .await
+            .is_ok());
+        assert!(manager
+            .spawn(name.clone(), || async { Ok(()) })
+            .await
+            .is_err());
     }
 
     #[tokio::test]
@@ -321,10 +329,13 @@ mod tests {
         let manager = TaskManager::new();
         let name = "cleanup-test".to_string();
 
-        manager.spawn(name.clone(), || async {
-            sleep(Duration::from_millis(10)).await;
-            Ok(())
-        }).await.unwrap();
+        manager
+            .spawn(name.clone(), || async {
+                sleep(Duration::from_millis(10)).await;
+                Ok(())
+            })
+            .await
+            .unwrap();
 
         // 等待任务完成
         sleep(Duration::from_millis(50)).await;

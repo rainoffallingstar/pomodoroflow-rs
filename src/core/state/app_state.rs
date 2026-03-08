@@ -1,15 +1,21 @@
 //! 应用状态管理
 
 use std::sync::{Arc, Mutex};
-use tokio::sync::{mpsc, RwLock, oneshot};
+use tokio::sync::{mpsc, oneshot, RwLock};
 
 use crate::core::error::{AppError, Result};
-use crate::core::todo::{Todo, TodoStats, TodoFilter};
-use crate::core::pomodoro::{PomodoroSession, PomodoroConfig, PomodoroEvent};
+use crate::core::pomodoro::{PomodoroConfig, PomodoroEvent, PomodoroSession};
+use crate::core::todo::{Todo, TodoFilter, TodoStats};
 
 /// 用户配置
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UserConfig {
+    pub github_token_encrypted: String,
+    pub github_username: String,
+    pub last_sync_cursor: Option<String>,
+    pub selected_project_owner: Option<String>,
+    pub selected_project_repo: Option<String>,
+    pub selected_project_number: Option<i64>,
     pub pomodoro_work_duration: u64,
     pub pomodoro_short_break_duration: u64,
     pub pomodoro_long_break_duration: u64,
@@ -22,6 +28,12 @@ pub struct UserConfig {
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
+            github_token_encrypted: String::new(),
+            github_username: String::new(),
+            last_sync_cursor: None,
+            selected_project_owner: None,
+            selected_project_repo: None,
+            selected_project_number: None,
             pomodoro_work_duration: 1500,
             pomodoro_short_break_duration: 300,
             pomodoro_long_break_duration: 900,
@@ -160,7 +172,9 @@ pub struct AppStateManager {
     query_sender: mpsc::UnboundedSender<(StateQuery, oneshot::Sender<StateQueryResponse>)>,
     // 新增：存储接收端
     event_receiver: Arc<Mutex<Option<mpsc::UnboundedReceiver<AppEvent>>>>,
-    query_receiver: Arc<Mutex<Option<mpsc::UnboundedReceiver<(StateQuery, oneshot::Sender<StateQueryResponse>)>>>>,
+    _query_receiver: Arc<
+        Mutex<Option<mpsc::UnboundedReceiver<(StateQuery, oneshot::Sender<StateQueryResponse>)>>>,
+    >,
 }
 
 // 安全实现 Send + Sync，因为 mpsc::UnboundedSender 可以安全地跨线程发送
@@ -178,7 +192,7 @@ impl AppStateManager {
             event_sender,
             query_sender,
             event_receiver: Arc::new(Mutex::new(Some(event_receiver))),
-            query_receiver: Arc::new(Mutex::new(Some(query_receiver))),
+            _query_receiver: Arc::new(Mutex::new(Some(query_receiver))),
         }
     }
 
@@ -200,10 +214,7 @@ impl AppStateManager {
     }
 
     /// 发送状态查询
-    pub async fn send_query(
-        &self,
-        query: StateQuery,
-    ) -> Result<StateQueryResponse> {
+    pub async fn send_query(&self, query: StateQuery) -> Result<StateQueryResponse> {
         let (tx, rx) = oneshot::channel();
         self.query_sender
             .send((query, tx))
@@ -230,7 +241,11 @@ impl AppStateManager {
     }
 
     /// 更新任务
-    pub async fn update_todo(&self, id: &str, updates: crate::core::todo::TodoUpdate) -> Result<Option<Todo>> {
+    pub async fn update_todo(
+        &self,
+        id: &str,
+        updates: crate::core::todo::TodoUpdate,
+    ) -> Result<Option<Todo>> {
         let mut updated_todo = None;
 
         {
@@ -244,6 +259,18 @@ impl AppStateManager {
                 }
                 if let Some(status) = updates.status {
                     todo.update_status(status);
+                }
+                if let Some(github_issue_id) = updates.github_issue_id {
+                    todo.github_issue_id = github_issue_id;
+                    todo.updated_at = chrono::Utc::now();
+                }
+                if let Some(github_project_id) = updates.github_project_id {
+                    todo.github_project_id = github_project_id;
+                    todo.updated_at = chrono::Utc::now();
+                }
+                if let Some(github_issue_number) = updates.github_issue_number {
+                    todo.github_issue_number = github_issue_number;
+                    todo.updated_at = chrono::Utc::now();
                 }
 
                 updated_todo = Some(todo.clone());
@@ -300,6 +327,31 @@ impl AppStateManager {
         }
     }
 
+    /// 显式设置任务状态
+    pub async fn set_todo_status(
+        &self,
+        id: &str,
+        status: crate::core::todo::TodoStatus,
+    ) -> Result<Option<Todo>> {
+        let mut updated_todo = None;
+
+        {
+            let mut state = self.state.write().await;
+            if let Some(todo) = state.todos.iter_mut().find(|t| t.id == id) {
+                todo.update_status(status);
+                updated_todo = Some(todo.clone());
+                state.todo_stats = TodoStats::from_todos(&state.todos);
+            }
+        }
+
+        if let Some(todo) = updated_todo {
+            self.send_event(AppEvent::TodoUpdated(todo.clone()))?;
+            Ok(Some(todo))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// 批量更新任务
     pub async fn bulk_update_todos(&self, todos: Vec<Todo>) -> Result<()> {
         {
@@ -308,7 +360,9 @@ impl AppStateManager {
             state.todo_stats = TodoStats::from_todos(&state.todos);
         }
 
-        self.send_event(AppEvent::TodoBulkUpdated(self.state.read().await.todos.clone()))?;
+        self.send_event(AppEvent::TodoBulkUpdated(
+            self.state.read().await.todos.clone(),
+        ))?;
         Ok(())
     }
 
@@ -457,14 +511,12 @@ impl EventReceiver {
     pub fn try_recv(&mut self) -> Option<Result<AppEvent>> {
         match self.receiver.try_recv() {
             Ok(event) => Some(Ok(event)),
-            Err(e) => {
-                match e {
-                    tokio::sync::mpsc::error::TryRecvError::Empty => None,
-                    tokio::sync::mpsc::error::TryRecvError::Disconnected => {
-                        Some(Err(AppError::ChannelError("通道已关闭".to_string())))
-                    }
+            Err(e) => match e {
+                tokio::sync::mpsc::error::TryRecvError::Empty => None,
+                tokio::sync::mpsc::error::TryRecvError::Disconnected => {
+                    Some(Err(AppError::ChannelError("通道已关闭".to_string())))
                 }
-            }
+            },
         }
     }
 }
@@ -472,7 +524,9 @@ impl EventReceiver {
 impl AppStateManager {
     /// 创建事件接收器
     pub fn create_event_receiver(&self) -> Result<EventReceiver> {
-        let receiver = self.event_receiver.lock()
+        let receiver = self
+            .event_receiver
+            .lock()
             .map_err(|e| AppError::Other(format!("Failed to lock event receiver: {}", e)))?
             .take()
             .ok_or_else(|| AppError::Other("Event receiver already taken".to_string()))?;

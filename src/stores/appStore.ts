@@ -5,12 +5,17 @@ import { listen } from "@tauri-apps/api/event";
 // 检查是否在 Tauri 环境中运行
 const isRunningInTauri =
   typeof window !== "undefined" && !!(window as any).__TAURI__;
+const shouldUseTauriApi =
+  isRunningInTauri || typeof (globalThis as any).vi !== "undefined";
 
 export interface Todo {
   id: string;
   title: string;
   description?: string;
   status: "todo" | "in_progress" | "done";
+  github_issue_id?: number | null;
+  github_project_id?: number | null;
+  github_issue_number?: number | null;
   created_at: string;
   updated_at: string;
   tags?: Tag[];
@@ -26,6 +31,12 @@ export interface PomodoroSession {
 }
 
 export interface UserConfig {
+  github_token_encrypted: string;
+  github_username: string;
+  last_sync_cursor?: string | null;
+  selected_project_owner?: string | null;
+  selected_project_repo?: string | null;
+  selected_project_number?: number | null;
   pomodoro_work_duration: number;
   pomodoro_short_break_duration: number;
   pomodoro_long_break_duration: number;
@@ -35,11 +46,81 @@ export interface UserConfig {
   theme: string;
 }
 
+export interface GithubSyncTarget {
+  owner: string;
+  repo: string;
+  project_number: number;
+}
+
+export interface GithubSyncReport {
+  dry_run: boolean;
+  pending_items: number;
+  supported_items: number;
+  unsupported_items: number;
+  invalid_items: number;
+  target: GithubSyncTarget;
+  errors: string[];
+}
+
 export interface Tag {
   id: string;
   name: string;
   color: string;
   created_at?: string;
+}
+
+interface CommandResult<T> {
+  success: boolean;
+  data: T | null;
+  error: string | null;
+  error_code?: string | null;
+}
+
+type TagTuple = [string, string, string];
+export interface AppErrorPayload {
+  message: string;
+  code?: string | null;
+}
+interface InvokeOptions {
+  allowNullData?: boolean;
+}
+
+function parseErrorPayload(input: string): AppErrorPayload {
+  const trimmed = input.trim();
+  const match = trimmed.match(/^\[([A-Z0-9_]+)\]\s*(.+)$/);
+  if (match) {
+    return {
+      code: match[1],
+      message: match[2].trim(),
+    };
+  }
+  return { message: trimmed };
+}
+
+async function invokeCommand<T>(
+  command: string,
+  payload?: Record<string, unknown>,
+  options?: InvokeOptions,
+): Promise<T> {
+  const result = await invoke<CommandResult<T> | T>(command, payload);
+  // Backward compatibility: some callers/tests still mock raw payloads.
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "success" in result
+  ) {
+    const wrapped = result as CommandResult<T>;
+    if (!wrapped.success) {
+      const message = wrapped.error || `${command} failed`;
+      const code = wrapped.error_code?.trim();
+      throw new Error(code ? `[${code}] ${message}` : message);
+    }
+    if (wrapped.data === null && !options?.allowNullData) {
+      throw new Error(`${command} returned empty data`);
+    }
+    return wrapped.data as T;
+  }
+  return result as T;
 }
 
 interface AppState {
@@ -50,17 +131,18 @@ interface AppState {
   theme: "light" | "dark" | "system";
   unlistenFunctions: (() => void)[]; // 存储事件监听器清理函数
   error: string | null; // 全局错误信息
+  errorCode: string | null;
   success: string | null; // 全局成功信息
   selectedTodoId: string | null; // 当前选中的待办事项 ID
 
   // Actions
-  initializeApp: () => void;
+  initializeApp: () => Promise<void>;
   loadTodos: () => Promise<void>;
   loadPomodoroSession: () => Promise<void>;
   loadUserConfig: () => Promise<void>;
-  setupEventListeners: () => void;
+  setupEventListeners: () => Promise<void>;
   cleanupEventListeners: () => void;
-  setError: (error: string | null) => void;
+  setError: (error: string | AppErrorPayload | null) => void;
   setSuccess: (success: string | null) => void;
   clearMessages: () => void;
 
@@ -71,13 +153,22 @@ interface AppState {
   skipPomodoroPhase: () => Promise<void>;
 
   // Todo actions
-  createTodo: (title: string, description?: string, initialStatus?: "todo" | "in_progress" | "done") => Promise<void>;
+  createTodo: (title: string, description?: string, initialStatus?: "todo" | "in_progress" | "done") => Promise<Todo | null>;
   updateTodo: (id: string, updates: Partial<Todo>) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
   toggleTodoStatus: (id: string) => Promise<void>;
+  setTodoStatus: (id: string, status: "todo" | "in_progress" | "done") => Promise<void>;
+  linkTodoGithub: (
+    id: string,
+    issueId: number,
+    issueNumber: number,
+    projectId: number,
+  ) => Promise<void>;
+  clearTodoGithubLink: (id: string) => Promise<void>;
 
   // Config actions
   saveUserConfig: (config: UserConfig) => Promise<void>;
+  runGithubSync: (dryRun?: boolean) => Promise<GithubSyncReport>;
 
   // Theme actions
   setTheme: (theme: "light" | "dark" | "system") => void;
@@ -105,6 +196,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   theme: "system",
   unlistenFunctions: [],
   error: null,
+  errorCode: null,
   success: null,
   selectedTodoId: null,
   tags: [],
@@ -113,7 +205,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isLoading: true });
     try {
       // 检查是否在 Tauri 环境中运行
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Running in browser mode - Tauri features disabled");
         // 在浏览器中运行时，只加载基本功能
         return;
@@ -122,7 +214,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.log("Initializing app in Tauri mode...");
 
       // 设置事件监听
-      get().setupEventListeners();
+      await get().setupEventListeners();
 
       // 并行加载数据，添加错误处理
       const promises = [
@@ -166,7 +258,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // 先清理现有监听器
     get().cleanupEventListeners();
 
-    if (!isRunningInTauri) {
+    if (!shouldUseTauriApi) {
       console.warn("Skipping event listeners setup - not in Tauri environment");
       return;
     }
@@ -177,57 +269,27 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       // 监听番茄钟进度更新事件
-      const unlistenTick = await listen<string>("pomodoro-tick", (event) => {
-        try {
-          const data = JSON.parse(event.payload) as PomodoroSession;
-          set({ pomodoroSession: data });
-        } catch (error) {
-          console.error("Failed to parse pomodoro-tick event:", error);
+      const unlistenTick = await listen<PomodoroSession>("pomodoro-tick", (event) => {
+        if (!event.payload) {
+          return;
         }
+        set({ pomodoroSession: event.payload });
       });
       unlistenFunctions.push(() => unlistenTick());
 
       // 监听番茄钟阶段完成事件
-      const unlistenPhase = await listen<string>(
+      const unlistenPhase = await listen<PomodoroSession>(
         "pomodoro-phase-completed",
-        async (event) => {
-          try {
-            const data = JSON.parse(event.payload) as PomodoroSession;
-            set({ pomodoroSession: data });
-            console.log("Pomodoro phase completed:", data);
-
-            // 重新加载会话状态以获取新阶段信息（后端已自动切换到下一阶段）
-            await get().loadPomodoroSession();
-
-            // 自动开始下一阶段计时
-            await get().startPomodoro();
-            console.log("Auto-started next phase");
-
-            // 可以在这里显示通知或播放声音
-            if (get().userConfig?.notifications_enabled) {
-              // 这里可以调用显示通知的命令
-            }
-          } catch (error) {
-            console.error(
-              "Failed to parse pomodoro-phase-completed event:",
-              error,
-            );
+        (event) => {
+          if (!event.payload) {
+            return;
           }
+
+          set({ pomodoroSession: event.payload });
+          console.log("Pomodoro phase completed:", event.payload);
         },
       );
       unlistenFunctions.push(() => unlistenPhase());
-
-      // 添加事件系统健康检查
-      const healthCheckInterval = setInterval(async () => {
-        try {
-          const session = await get().loadPomodoroSession();
-          console.log("Pomodoro health check completed");
-        } catch (error) {
-          console.warn("Pomodoro health check failed:", error);
-        }
-      }, 5000); // 每5秒检查一次
-
-      unlistenFunctions.push(() => clearInterval(healthCheckInterval));
 
       console.log("Pomodoro listeners setup completed");
     } catch (error) {
@@ -244,14 +306,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ unlistenFunctions: [] });
   },
 
-  setError: (error: string | null) => {
-    set({ error });
-    // 3秒后自动清除错误
-    if (error) {
-      setTimeout(() => {
-        get().clearMessages();
-      }, 3000);
+  setError: (errorInput: string | AppErrorPayload | null) => {
+    if (!errorInput) {
+      set({ error: null, errorCode: null });
+      return;
     }
+
+    const parsed =
+      typeof errorInput === "string" ? parseErrorPayload(errorInput) : errorInput;
+    set({ error: parsed.message, errorCode: parsed.code ?? null });
+    // 3秒后自动清除错误
+    setTimeout(() => {
+      get().clearMessages();
+    }, 3000);
   },
 
   setSuccess: (success: string | null) => {
@@ -265,20 +332,35 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearMessages: () => {
-    set({ error: null, success: null });
+    set({ error: null, errorCode: null, success: null });
   },
 
   loadTodos: async () => {
     try {
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Skipping loadTodos - not in Tauri environment");
         return;
       }
-      const result = await invoke<{ data: Todo[] }>("get_todos");
-      if (result.data) {
-        set({ todos: result.data });
-        console.log("Loaded todos:", result.data.length);
-      }
+      const todos = await invokeCommand<Todo[]>("get_todos");
+      const todosWithTags = await Promise.all(
+        todos.map(async (todo) => {
+          const tagPayload = await invokeCommand<unknown>("get_todo_tags", {
+            todo_id: todo.id,
+          }).catch(() => []);
+          const tags = Array.isArray(tagPayload)
+            ? (tagPayload.filter(
+                (item): item is TagTuple =>
+                  Array.isArray(item) && item.length === 3,
+              ) as TagTuple[])
+            : [];
+          return {
+            ...todo,
+            tags: tags.map(([id, name, color]) => ({ id, name, color })),
+          };
+        }),
+      );
+      set({ todos: todosWithTags });
+      console.log("Loaded todos:", todosWithTags.length);
     } catch (error) {
       console.error("Failed to load todos:", error);
     }
@@ -286,15 +368,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadPomodoroSession: async () => {
     try {
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Skipping loadPomodoroSession - not in Tauri environment");
         return;
       }
-      const result = await invoke<{ data: PomodoroSession | null }>(
+      const session = await invokeCommand<PomodoroSession | null>(
         "get_pomodoro_session",
+        undefined,
+        { allowNullData: true },
       );
-      set({ pomodoroSession: result.data });
-      console.log("Loaded pomodoro session:", result.data);
+      set({ pomodoroSession: session });
+      console.log("Loaded pomodoro session:", session);
     } catch (error) {
       console.error("Failed to load pomodoro session:", error);
     }
@@ -302,15 +386,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadUserConfig: async () => {
     try {
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Skipping loadUserConfig - not in Tauri environment");
         return;
       }
-      const result = await invoke<{ data: UserConfig | null }>(
+      const config = await invokeCommand<UserConfig | null>(
         "get_user_config",
+        undefined,
+        { allowNullData: true },
       );
-      set({ userConfig: result.data });
-      console.log("Loaded user config:", result.data);
+      set({ userConfig: config });
+      console.log("Loaded user config:", config);
     } catch (error) {
       console.error("Failed to load user config:", error);
     }
@@ -319,7 +405,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   startPomodoro: async () => {
     try {
       console.log("🍅 Starting pomodoro...");
-      await invoke("start_pomodoro");
+      await invokeCommand<{}>("start_pomodoro");
       console.log("✅ Pomodoro start command sent");
       await get().loadPomodoroSession();
       console.log("📊 Session loaded:", get().pomodoroSession);
@@ -332,7 +418,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   pausePomodoro: async () => {
     try {
       console.log("⏸️ Pausing pomodoro...");
-      await invoke("pause_pomodoro");
+      await invokeCommand<{}>("pause_pomodoro");
       console.log("✅ Pomodoro paused");
       await get().loadPomodoroSession();
     } catch (error) {
@@ -343,7 +429,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   resetPomodoro: async () => {
     try {
       console.log("🔄 Resetting pomodoro...");
-      await invoke("reset_pomodoro");
+      await invokeCommand<{}>("reset_pomodoro");
       console.log("✅ Pomodoro reset");
       await get().loadPomodoroSession();
     } catch (error) {
@@ -353,7 +439,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   skipPomodoroPhase: async () => {
     try {
-      await invoke("skip_pomodoro_phase");
+      await invokeCommand<{}>("skip_pomodoro_phase");
       await get().loadPomodoroSession();
     } catch (error) {
       console.error("Failed to skip pomodoro phase:", error);
@@ -386,30 +472,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         status: finalStatus,
       };
 
-      const result = await invoke<{
-        success: boolean;
-        data?: Todo;
-        error?: string;
-      }>("create_todo", payload);
-
-      if (result.success && result.data) {
-        // 成功后替换临时待办事项为真实数据，强制使用前端的状态
+      const createdTodo = await invokeCommand<Todo>("create_todo", payload);
+      if (createdTodo) {
+        // 成功后替换临时待办事项为后端权威返回值
         set((state) => {
           const newTodos = state.todos.filter(t => t.id !== optimisticId);
-          const finalTodo = {
-            ...result.data!,
-            status: finalStatus  // 强制使用前端设置的状态
-          };
-          const updatedTodos = [...newTodos, finalTodo];
+          const updatedTodos = [...newTodos, createdTodo];
           return { todos: updatedTodos };
         });
         get().setSuccess("待办事项创建成功");
+        return createdTodo;
       } else {
-        // 回滚乐观更新
-        set((state) => ({
-          todos: state.todos.filter((todo) => todo.id !== optimisticId),
-        }));
-        throw new Error(result.error || "创建待办事项失败");
+        throw new Error("创建待办事项失败");
       }
     } catch (error) {
       console.error("Failed to create todo:", error);
@@ -427,7 +501,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateTodo: async (id: string, updates: Partial<Todo>) => {
     try {
-      await invoke("update_todo", { id, ...updates });
+      await invokeCommand<Todo>("update_todo", { id, ...updates });
       await get().loadTodos();
     } catch (error) {
       console.error("Failed to update todo:", error);
@@ -445,8 +519,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       // 使用真实的后端命令，线程安全问题已修复
-      const result = await invoke<{ data: boolean }>("delete_todo", { id });
-      if (!result.data) {
+      const deleted = await invokeCommand<boolean>("delete_todo", { id });
+      if (!deleted) {
         throw new Error("Delete operation failed");
       }
     } catch (error) {
@@ -461,76 +535,69 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleTodoStatus: async (id: string) => {
+    const todo = get().todos.find((item) => item.id === id);
+    if (!todo) return;
+
+    const nextStatus =
+      todo.status === "todo"
+        ? "in_progress"
+        : todo.status === "in_progress"
+          ? "done"
+          : "todo";
+
+    await get().setTodoStatus(id, nextStatus);
+  },
+
+  setTodoStatus: async (id: string, status: "todo" | "in_progress" | "done") => {
     const { todos } = get();
-    // 保存原始状态用于回滚
     const originalTodos = [...todos];
 
-    // 立即更新UI（乐观更新）
-    const updatedTodos = todos.map((todo) => {
-      if (todo.id === id) {
-        const newStatus: "todo" | "in_progress" | "done" =
-          todo.status === "done" ? "todo" : "done";
-        return {
-          ...todo,
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        };
-      }
-      return todo;
+    set({
+      todos: todos.map((todo) =>
+        todo.id === id
+          ? { ...todo, status, updated_at: new Date().toISOString() }
+          : todo,
+      ),
     });
-    set({ todos: updatedTodos });
 
     try {
-      // 使用真实的后端命令，线程安全问题已修复
-      const result = await invoke<{ data: Todo }>("toggle_todo_status", { id });
-      if (!result.data) {
-        throw new Error("Toggle operation failed");
-      }
-      // 成功后重新加载列表以确保数据一致性
+      await invokeCommand<Todo>("set_todo_status", { id, status });
       await get().loadTodos();
     } catch (error) {
-      console.error("Failed to toggle todo status:", error);
-      // 失败后回滚
+      console.error("Failed to set todo status:", error);
       set({ todos: originalTodos });
-      // 显示错误提示
-      get().setError("切换待办事项状态失败，请重试");
+      get().setError("更新待办事项状态失败，请重试");
     }
   },
 
   saveUserConfig: async (config: UserConfig) => {
     try {
-      const result = await invoke<{
-        success: boolean;
-        data?: {};
-        error?: string;
-      }>("save_user_config", { config });
-
-      // 检查后端返回的成功状态
-      if (!result.success) {
-        throw new Error(result.error || "保存配置失败");
-      }
+      await invokeCommand<{}>("save_user_config", { config });
 
       // 更新本地状态
       set({ userConfig: config });
-
-      // 更新运行中的番茄钟服务配置
-      try {
-        await invoke("update_pomodoro_config", {
-          work_duration: config.pomodoro_work_duration,
-          short_break: config.pomodoro_short_break_duration,
-          long_break: config.pomodoro_long_break_duration,
-          cycles: config.pomodoro_cycles_until_long_break,
-        });
-      } catch (updateError) {
-        console.warn("Failed to update pomodoro service config:", updateError);
-        // 不阻塞保存流程，只记录警告
-      }
 
       get().setSuccess("设置保存成功");
     } catch (error) {
       console.error("Failed to save user config:", error);
       get().setError(error instanceof Error ? error.message : "保存配置失败");
       throw error; // 重新抛出错误让调用者处理
+    }
+  },
+
+  runGithubSync: async (dryRun = true) => {
+    try {
+      const report = await invokeCommand<GithubSyncReport>("run_github_sync", {
+        dry_run: dryRun,
+      });
+      get().setSuccess(
+        `同步检查完成: pending=${report.pending_items}, supported=${report.supported_items}`,
+      );
+      return report;
+    } catch (error) {
+      console.error("Failed to run github sync:", error);
+      get().setError(error instanceof Error ? error.message : "执行 GitHub 同步失败");
+      throw error;
     }
   },
 
@@ -577,15 +644,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadTags: async () => {
     try {
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Skipping loadTags - not in Tauri environment");
         return;
       }
-      const result = await invoke<{ data: Tag[] }>("get_tags");
-      if (result.data) {
-        set({ tags: result.data });
-        console.log("Loaded tags:", result.data.length);
-      }
+      const result = await invokeCommand<TagTuple[]>("get_tags");
+      const tags = result.map(([id, name, color]) => ({ id, name, color }));
+      set({ tags });
+      console.log("Loaded tags:", tags.length);
     } catch (error) {
       console.error("Failed to load tags:", error);
     }
@@ -593,26 +659,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   createTag: async (name: string, color: string) => {
     try {
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Skipping createTag - not in Tauri environment");
         return;
       }
-      const result = await invoke<{ success: boolean; data: [string, string, string]; error?: string }>("create_tag", {
+      const result = await invokeCommand<TagTuple>("create_tag", {
         name,
         color,
       });
-      if (result.success && result.data) {
-        const newTag: Tag = {
-          id: result.data[0],
-          name: result.data[1],
-          color: result.data[2],
-          created_at: new Date().toISOString(),
-        };
-        set({ tags: [...get().tags, newTag] });
-        get().setSuccess("标签创建成功");
-      } else {
-        throw new Error(result.error || "创建标签失败");
-      }
+      const newTag: Tag = {
+        id: result[0],
+        name: result[1],
+        color: result[2],
+        created_at: new Date().toISOString(),
+      };
+      set({ tags: [...get().tags, newTag] });
+      get().setSuccess("标签创建成功");
     } catch (error) {
       console.error("Failed to create tag:", error);
       get().setError(error instanceof Error ? error.message : "创建标签失败");
@@ -620,18 +682,62 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  linkTodoGithub: async (
+    id: string,
+    issueId: number,
+    issueNumber: number,
+    projectId: number,
+  ) => {
+    try {
+      const updatedTodo = await invokeCommand<Todo>("link_todo_github", {
+        id,
+        issue_id: issueId,
+        issue_number: issueNumber,
+        project_id: projectId,
+      });
+
+      set((state) => ({
+        todos: state.todos.map((todo) =>
+          todo.id === id ? { ...todo, ...updatedTodo } : todo,
+        ),
+      }));
+    } catch (error) {
+      console.error("Failed to link todo github:", error);
+      get().setError((error as Error).message || "关联 GitHub 失败");
+      throw error;
+    }
+  },
+
+  clearTodoGithubLink: async (id: string) => {
+    try {
+      const updatedTodo = await invokeCommand<Todo>("clear_todo_github_link", {
+        id,
+      });
+
+      set((state) => ({
+        todos: state.todos.map((todo) =>
+          todo.id === id ? { ...todo, ...updatedTodo } : todo,
+        ),
+      }));
+    } catch (error) {
+      console.error("Failed to clear todo github link:", error);
+      get().setError((error as Error).message || "清除 GitHub 关联失败");
+      throw error;
+    }
+  },
+
   deleteTag: async (id: string) => {
     try {
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Skipping deleteTag - not in Tauri environment");
         return;
       }
-      const result = await invoke<{ success: boolean; data?: boolean; error?: string }>("delete_tag", { id });
-      if (result.success && result.data) {
+      const deleted = await invokeCommand<boolean>("delete_tag", { id });
+      if (deleted) {
         set({ tags: get().tags.filter((t) => t.id !== id) });
         get().setSuccess("标签删除成功");
       } else {
-        throw new Error(result.error || "删除标签失败");
+        throw new Error("删除标签失败");
       }
     } catch (error) {
       console.error("Failed to delete tag:", error);
@@ -642,11 +748,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   assignTagToTodo: async (todoId: string, tagId: string) => {
     try {
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Skipping assignTagToTodo - not in Tauri environment");
         return;
       }
-      await invoke("assign_tag_to_todo", { todoId, tagId });
+      await invokeCommand<{}>("assign_tag_to_todo", {
+        todo_id: todoId,
+        tag_id: tagId,
+      });
       get().setSuccess("标签分配成功");
     } catch (error) {
       console.error("Failed to assign tag to todo:", error);
@@ -657,11 +766,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeTagFromTodo: async (todoId: string, tagId: string) => {
     try {
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Skipping removeTagFromTodo - not in Tauri environment");
         return;
       }
-      await invoke("remove_tag_from_todo", { todoId, tagId });
+      await invokeCommand<{}>("remove_tag_from_todo", {
+        todo_id: todoId,
+        tag_id: tagId,
+      });
       get().setSuccess("标签移除成功");
     } catch (error) {
       console.error("Failed to remove tag from todo:", error);
@@ -672,19 +784,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   getTodoTags: async (todoId: string) => {
     try {
-      if (!isRunningInTauri) {
+      if (!shouldUseTauriApi) {
         console.warn("Skipping getTodoTags - not in Tauri environment");
         return [];
       }
-      const result = await invoke<{ success: boolean; data?: Tag[]; error?: string }>("get_todo_tags", { todoId });
-      if (result.success && result.data) {
-        return result.data;
-      }
-      return [];
+      const tags = await invokeCommand<TagTuple[]>("get_todo_tags", {
+        todo_id: todoId,
+      });
+      return tags.map(([id, name, color]) => ({ id, name, color }));
     } catch (error) {
       console.error("Failed to get todo tags:", error);
       return [];
     }
   },
 }));
-

@@ -597,6 +597,29 @@
   margin-top: 4px;
 }
 
+.ios-todo-meta {
+  margin-top: 4px;
+}
+
+.todo-github-link {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f2937;
+  background: rgba(2, 132, 199, 0.12);
+  border: 1px solid rgba(2, 132, 199, 0.25);
+}
+
+.ios-github-btn {
+  color: #0ea5e9;
+}
+
+.ios-github-unlink-btn {
+  color: #ef4444;
+}
+
 .todo-tag {
   display: inline-block;
   padding: 2px 8px;

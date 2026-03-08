@@ -1,136 +1,127 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act } from "react";
 import App from "../App";
 import { useAppStore } from "../stores/appStore";
 
-// Mock Tauri API
-const mockInvoke = vi.fn();
 vi.mock("@tauri-apps/api/tauri", () => ({
-  invoke: mockInvoke,
+  invoke: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(),
+  listen: vi.fn(() => Promise.resolve(() => {})),
   emit: vi.fn(),
 }));
 
-// Mock stores
 vi.mock("../stores/appStore", () => ({
   useAppStore: vi.fn(),
 }));
 
-describe("Integration Tests", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    // Setup default store mock
-    const mockAppStore = {
-      todos: [],
-      pomodoroSession: null,
-      userConfig: null,
-      theme: "light",
-      toggleTheme: vi.fn(),
-      loadTodos: vi.fn(),
-      createTodo: vi.fn(),
-      updateTodo: vi.fn(),
-      deleteTodo: vi.fn(),
-      toggleTodoStatus: vi.fn(),
-      startPomodoro: vi.fn(),
-      pausePomodoro: vi.fn(),
-      resetPomodoro: vi.fn(),
-      skipPomodoroPhase: vi.fn(),
-      loadUserConfig: vi.fn(),
-      saveUserConfig: vi.fn(),
-    };
-
-    vi.mocked(useAppStore).mockReturnValue(mockAppStore);
-  });
-
-  it("should integrate pomodoro timer with todo list", async () => {
-    const user = userEvent.setup();
-
-    // Setup initial data
-    const mockTodos = [
-      {
-        id: "1",
-        title: "Complete project documentation",
-        description: null,
-        status: "todo",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ];
-
-    const mockSession = {
+function makeStore(overrides: Record<string, unknown> = {}) {
+  return {
+    todos: [],
+    pomodoroSession: {
       phase: "work",
       duration: 1500,
       remaining: 1500,
       is_running: false,
       cycle_count: 0,
-    };
+    },
+    userConfig: null,
+    theme: "light",
+    isLoading: false,
+    initializeApp: vi.fn(async () => {}),
+    setupEventListeners: vi.fn(async () => {}),
+    cleanupEventListeners: vi.fn(),
+    clearMessages: vi.fn(),
+    setError: vi.fn(),
+    setSuccess: vi.fn(),
+    createTodo: vi.fn(async () => ({ id: "new-id" })),
+    updateTodo: vi.fn(),
+    deleteTodo: vi.fn(),
+    toggleTodoStatus: vi.fn(),
+    startPomodoro: vi.fn(),
+    pausePomodoro: vi.fn(),
+    resetPomodoro: vi.fn(),
+    skipPomodoroPhase: vi.fn(),
+    loadTodos: vi.fn(),
+    loadUserConfig: vi.fn(),
+    saveUserConfig: vi.fn(),
+    loadPomodoroSession: vi.fn(),
+    setTheme: vi.fn(),
+    toggleTheme: vi.fn(),
+    selectedTodoId: null,
+    selectTodo: vi.fn(),
+    getSelectedTodo: vi.fn(() => null),
+    tags: [],
+    loadTags: vi.fn(),
+    createTag: vi.fn(),
+    deleteTag: vi.fn(),
+    assignTagToTodo: vi.fn(),
+    removeTagFromTodo: vi.fn(),
+    getTodoTags: vi.fn(async () => []),
+    ...overrides,
+  };
+}
 
-    vi.mocked(useAppStore).mockReturnValue({
-      todos: mockTodos,
-      pomodoroSession: mockSession,
-      userConfig: null,
-      theme: "light",
-      toggleTheme: vi.fn(),
-      loadTodos: vi.fn(),
-      createTodo: vi.fn(),
-      updateTodo: vi.fn(),
-      deleteTodo: vi.fn(),
-      toggleTodoStatus: vi.fn(),
-      startPomodoro: vi.fn(),
-      pausePomodoro: vi.fn(),
-      resetPomodoro: vi.fn(),
-      skipPomodoroPhase: vi.fn(),
-      loadUserConfig: vi.fn(),
-      saveUserConfig: vi.fn(),
-    });
+describe("Integration Tests", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders app and exits loading state", async () => {
+    vi.mocked(useAppStore).mockReturnValue(
+      makeStore({
+        todos: [
+          {
+            id: "1",
+            title: "Complete project documentation",
+            description: null,
+            status: "todo",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ],
+      }) as any,
+    );
 
     render(<App />);
 
-    // Verify initial state
-    expect(screen.getByText("PomodoroFlow")).toBeInTheDocument();
     expect(
-      screen.getByText("Complete project documentation"),
+      await screen.findByText("Complete project documentation"),
     ).toBeInTheDocument();
     expect(screen.getByText("25:00")).toBeInTheDocument();
   });
 
-  it("should create and complete a workflow", async () => {
-    const user = userEvent.setup();
+  it("creates todo via input flow", async () => {
+    const createTodo = vi.fn(async () => ({ id: "created-id" }));
 
-    // Setup empty state
-    vi.mocked(useAppStore).mockReturnValue({
-      todos: [],
-      pomodoroSession: null,
-      userConfig: null,
-      theme: "light",
-      toggleTheme: vi.fn(),
-      loadTodos: vi.fn(),
-      createTodo: vi.fn(),
-      updateTodo: vi.fn(),
-      deleteTodo: vi.fn(),
-      toggleTodoStatus: vi.fn(),
-      startPomodoro: vi.fn(),
-      pausePomodoro: vi.fn(),
-      resetPomodoro: vi.fn(),
-      skipPomodoroPhase: vi.fn(),
-      loadUserConfig: vi.fn(),
-      saveUserConfig: vi.fn(),
-    });
+    vi.mocked(useAppStore).mockReturnValue(
+      makeStore({
+        todos: [],
+        createTodo,
+      }) as any,
+    );
 
     render(<App />);
 
-    // Create new todo
-    const input = screen.getByPlaceholderText("Add a new task...");
-    await user.type(input, "Write unit tests");
+    const input = await screen.findByPlaceholderText("Add a new task...");
+    fireEvent.change(input, { target: { value: "Write unit tests" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+      await Promise.resolve();
+    });
 
-    const addButton = screen.getByText("Add");
-    await user.click(addButton);
-
-    expect(screen.getByText("PomodoroFlow")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(createTodo).toHaveBeenCalledWith(
+        "Write unit tests",
+        undefined,
+        "todo",
+      );
+    });
   });
 });

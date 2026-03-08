@@ -3,13 +3,14 @@
 //! 包含番茄钟逻辑、待办事项模型和错误处理
 
 pub mod error;
-pub mod state;
+pub mod github_sync;
 pub mod pomodoro;
-pub mod todo;
+pub mod state;
 pub mod state_updater;
+pub mod todo;
 
 pub use error::{AppError, Result};
+pub use pomodoro::{PomodoroConfig, PomodoroPhase, PomodoroService, PomodoroSession};
 pub use state::{AppStateManager, UserConfig};
-pub use pomodoro::{PomodoroService, PomodoroPhase, PomodoroSession, PomodoroConfig};
-pub use todo::{TodoService, Todo, NewTodo, TodoUpdate, TodoStatus, TodoFilter, Tag};
 pub use state_updater::{StateUpdater, StateUpdaterConfig};
+pub use todo::{NewTodo, Tag, Todo, TodoFilter, TodoService, TodoStatus, TodoUpdate};

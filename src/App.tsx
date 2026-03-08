@@ -5,6 +5,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { MessageToast } from "./components/MessageToast";
 import { FloatingSettingsButton } from "./components/FloatingSettingsButton";
 import { useAppStore } from "./stores/appStore";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import "./styles/App.css";
 
 function App() {
@@ -15,23 +16,39 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const { theme, initializeApp, isLoading } = useAppStore();
+  useKeyboardShortcuts(() => setIsSettingsOpen(true));
 
   useEffect(() => {
-    // 初始化应用状态
-    initializeApp();
+    let disposed = false;
+    let cleanupComplete: (() => void) | null = null;
+    let cleanupError: (() => void) | null = null;
 
-    // 监听初始化完成事件
-    const unlistenComplete = listen("initialization-complete", () => {
-      console.log("✅ 后端初始化完成");
-      setIsInitializing(false);
-    });
+    // 先订阅初始化事件，再启动初始化，避免事件先发后收导致的竞态。
+    const setupInitialization = async () => {
+      cleanupComplete = await listen("initialization-complete", () => {
+        if (disposed) return;
+        console.log("✅ 后端初始化完成");
+        setIsInitializing(false);
+      });
 
-    // 监听初始化错误事件
-    const unlistenError = listen("initialization-error", (event) => {
-      console.error("❌ 后端初始化失败:", event.payload);
-      setInitializationError(event.payload as string);
-      setIsInitializing(false);
-    });
+      cleanupError = await listen("initialization-error", (event) => {
+        if (disposed) return;
+        console.error("❌ 后端初始化失败:", event.payload);
+        setInitializationError(event.payload as string);
+        setIsInitializing(false);
+      });
+
+      if (typeof initializeApp === "function") {
+        await initializeApp();
+        if (!disposed) {
+          setIsInitializing(false);
+        }
+      } else if (!disposed) {
+        setIsInitializing(false);
+      }
+    };
+
+    void setupInitialization();
 
     // 设置超时，防止事件丢失
     const timeoutId = setTimeout(() => {
@@ -40,8 +57,9 @@ function App() {
     }, 10000);
 
     return () => {
-      unlistenComplete.then((f) => f());
-      unlistenError.then((f) => f());
+      disposed = true;
+      cleanupComplete?.();
+      cleanupError?.();
       clearTimeout(timeoutId);
     };
   }, [initializeApp]);

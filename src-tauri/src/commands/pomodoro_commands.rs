@@ -1,12 +1,12 @@
 //! 番茄钟相关的 Tauri 命令
 
-use pomoflow_rs::PomodoroAppManager;
+use pomoflow_rs::{PomodoroAppManager, PomodoroConfig};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::State;
 use tracing::error;
 
-use super::{CommandError, CommandResult};
+use super::{command_error_result, CommandError, CommandResult};
 
 /// 获取当前番茄钟会话状态
 #[tauri::command]
@@ -20,18 +20,10 @@ pub async fn get_pomodoro_session(
     };
 
     match session {
-        Ok(session) => Ok(CommandResult {
-            success: true,
-            data: Some(session),
-            error: None,
-        }),
+        Ok(session) => Ok(CommandResult::success(session)),
         Err(err) => {
             error!("Failed to get pomodoro session: {}", err);
-            Ok(CommandResult {
-                success: false,
-                data: None,
-                error: Some(err.to_string()),
-            })
+            Ok(command_error_result(err))
         }
     }
 }
@@ -48,18 +40,10 @@ pub async fn start_pomodoro(
     };
 
     match result {
-        Ok(_) => Ok(CommandResult {
-            success: true,
-            data: Some(()),
-            error: None,
-        }),
+        Ok(_) => Ok(CommandResult::success(())),
         Err(err) => {
             error!("Failed to start pomodoro: {}", err);
-            Ok(CommandResult {
-                success: false,
-                data: None,
-                error: Some(err.to_string()),
-            })
+            Ok(command_error_result(err))
         }
     }
 }
@@ -76,18 +60,10 @@ pub async fn pause_pomodoro(
     };
 
     match result {
-        Ok(_) => Ok(CommandResult {
-            success: true,
-            data: Some(()),
-            error: None,
-        }),
+        Ok(_) => Ok(CommandResult::success(())),
         Err(err) => {
             error!("Failed to pause pomodoro: {}", err);
-            Ok(CommandResult {
-                success: false,
-                data: None,
-                error: Some(err.to_string()),
-            })
+            Ok(command_error_result(err))
         }
     }
 }
@@ -104,18 +80,10 @@ pub async fn reset_pomodoro(
     };
 
     match result {
-        Ok(_) => Ok(CommandResult {
-            success: true,
-            data: Some(()),
-            error: None,
-        }),
+        Ok(_) => Ok(CommandResult::success(())),
         Err(err) => {
             error!("Failed to reset pomodoro: {}", err);
-            Ok(CommandResult {
-                success: false,
-                data: None,
-                error: Some(err.to_string()),
-            })
+            Ok(command_error_result(err))
         }
     }
 }
@@ -132,18 +100,10 @@ pub async fn skip_pomodoro_phase(
     };
 
     match result {
-        Ok(_) => Ok(CommandResult {
-            success: true,
-            data: Some(()),
-            error: None,
-        }),
+        Ok(_) => Ok(CommandResult::success(())),
         Err(err) => {
             error!("Failed to skip pomodoro phase: {}", err);
-            Ok(CommandResult {
-                success: false,
-                data: None,
-                error: Some(err.to_string()),
-            })
+            Ok(command_error_result(err))
         }
     }
 }
@@ -157,15 +117,12 @@ pub async fn update_pomodoro_config(
     long_break: u64,
     cycles: u32,
 ) -> Result<CommandResult<()>, CommandError> {
-    // 创建配置对象
-    let config = pomoflow_rs::core::state::app_state::UserConfig {
-        pomodoro_work_duration: work_duration,
-        pomodoro_short_break_duration: short_break,
-        pomodoro_long_break_duration: long_break,
-        pomodoro_cycles_until_long_break: cycles,
-        notifications_enabled: true,
-        sound_enabled: true,
-        theme: "light".to_string(),
+    // 仅更新运行时番茄钟配置，不覆盖用户主题和通知偏好
+    let config = PomodoroConfig {
+        work_duration,
+        short_break_duration: short_break,
+        long_break_duration: long_break,
+        cycles_until_long_break: cycles,
     };
 
     // 使用异步锁，调用新的 update_pomodoro_config 方法
@@ -175,18 +132,10 @@ pub async fn update_pomodoro_config(
     };
 
     match result {
-        Ok(_) => Ok(CommandResult {
-            success: true,
-            data: Some(()),
-            error: None,
-        }),
+        Ok(_) => Ok(CommandResult::success(())),
         Err(err) => {
             error!("Failed to update pomodoro config: {}", err);
-            Ok(CommandResult {
-                success: false,
-                data: None,
-                error: Some(err.to_string()),
-            })
+            Ok(command_error_result(err))
         }
     }
 }

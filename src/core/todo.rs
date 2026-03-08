@@ -65,6 +65,9 @@ pub struct Todo {
     pub title: String,
     pub description: Option<String>,
     pub status: TodoStatus,
+    pub github_issue_id: Option<i64>,
+    pub github_project_id: Option<i64>,
+    pub github_issue_number: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -78,6 +81,9 @@ impl Todo {
             title,
             description,
             status: TodoStatus::Todo,
+            github_issue_id: None,
+            github_project_id: None,
+            github_issue_number: None,
             created_at: now,
             updated_at: now,
         }
@@ -114,6 +120,22 @@ impl Todo {
     /// 检查任务是否完成
     pub fn is_done(&self) -> bool {
         matches!(self.status, TodoStatus::Done)
+    }
+
+    /// 绑定 GitHub Issue / Project 元数据
+    pub fn set_github_info(&mut self, issue_id: i64, issue_number: i64, project_id: i64) {
+        self.github_issue_id = Some(issue_id);
+        self.github_issue_number = Some(issue_number);
+        self.github_project_id = Some(project_id);
+        self.updated_at = Utc::now();
+    }
+
+    /// 清空 GitHub 关联元数据
+    pub fn clear_github_info(&mut self) {
+        self.github_issue_id = None;
+        self.github_issue_number = None;
+        self.github_project_id = None;
+        self.updated_at = Utc::now();
     }
 }
 
@@ -166,6 +188,9 @@ pub struct TodoUpdate {
     pub title: Option<String>,
     pub description: Option<Option<String>>, // Some(None) 表示删除描述
     pub status: Option<TodoStatus>,
+    pub github_issue_id: Option<Option<i64>>,
+    pub github_project_id: Option<Option<i64>>,
+    pub github_issue_number: Option<Option<i64>>,
 }
 
 impl TodoUpdate {
@@ -192,9 +217,32 @@ impl TodoUpdate {
         self
     }
 
+    /// 设置 GitHub Issue ID（Some(None) 表示清空）
+    pub fn with_github_issue_id(mut self, github_issue_id: Option<i64>) -> Self {
+        self.github_issue_id = Some(github_issue_id);
+        self
+    }
+
+    /// 设置 GitHub Project ID（Some(None) 表示清空）
+    pub fn with_github_project_id(mut self, github_project_id: Option<i64>) -> Self {
+        self.github_project_id = Some(github_project_id);
+        self
+    }
+
+    /// 设置 GitHub Issue Number（Some(None) 表示清空）
+    pub fn with_github_issue_number(mut self, github_issue_number: Option<i64>) -> Self {
+        self.github_issue_number = Some(github_issue_number);
+        self
+    }
+
     /// 检查是否有任何更新
     pub fn has_updates(&self) -> bool {
-        self.title.is_some() || self.description.is_some() || self.status.is_some()
+        self.title.is_some()
+            || self.description.is_some()
+            || self.status.is_some()
+            || self.github_issue_id.is_some()
+            || self.github_project_id.is_some()
+            || self.github_issue_number.is_some()
     }
 }
 
@@ -364,5 +412,38 @@ impl TodoExport {
             todos: todos.to_vec(),
             stats: TodoStats::from_todos(todos),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Todo, TodoUpdate};
+
+    #[test]
+    fn todo_new_initializes_github_fields_to_none() {
+        let todo = Todo::new("test".to_string(), None);
+        assert_eq!(todo.github_issue_id, None);
+        assert_eq!(todo.github_issue_number, None);
+        assert_eq!(todo.github_project_id, None);
+    }
+
+    #[test]
+    fn todo_set_and_clear_github_info_works() {
+        let mut todo = Todo::new("test".to_string(), None);
+        todo.set_github_info(1001, 77, 9001);
+        assert_eq!(todo.github_issue_id, Some(1001));
+        assert_eq!(todo.github_issue_number, Some(77));
+        assert_eq!(todo.github_project_id, Some(9001));
+
+        todo.clear_github_info();
+        assert_eq!(todo.github_issue_id, None);
+        assert_eq!(todo.github_issue_number, None);
+        assert_eq!(todo.github_project_id, None);
+    }
+
+    #[test]
+    fn todo_update_has_updates_for_github_fields() {
+        let updates = TodoUpdate::new().with_github_issue_id(Some(1));
+        assert!(updates.has_updates());
     }
 }

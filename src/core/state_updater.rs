@@ -79,7 +79,8 @@ impl StateUpdater {
     pub fn new_uninitialized() -> Self {
         // 创建一个未初始化的状态更新器实例
         let state_manager = Arc::new(AppStateManager::new());
-        let pomodoro_service = PomodoroService::new(crate::core::pomodoro::PomodoroConfig::default());
+        let pomodoro_service =
+            PomodoroService::new(crate::core::pomodoro::PomodoroConfig::default());
         let database = Arc::new(Database::init_uninitialized());
 
         Self {
@@ -111,7 +112,14 @@ impl StateUpdater {
 
         // 在后台运行状态更新循环
         tokio::spawn(async move {
-            Self::run_update_loop(state_manager, pomodoro_service, database, config, shutdown_rx).await;
+            Self::run_update_loop(
+                state_manager,
+                pomodoro_service,
+                database,
+                config,
+                shutdown_rx,
+            )
+            .await;
         });
 
         println!("✅ 状态更新器已在后台启动");
@@ -176,6 +184,8 @@ impl StateUpdater {
                     // 发送状态更新事件
                     let _ = state_manager.send_event(AppEvent::SettingsUpdated);
                 },
+                // 预留：未来在此处执行缓存/状态清理任务
+                _ = cache_cleanup_interval.tick() => {}
             }
         }
     }

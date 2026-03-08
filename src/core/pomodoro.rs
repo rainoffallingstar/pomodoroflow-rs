@@ -8,6 +8,7 @@ use crate::core::error::{AppError, Result};
 
 /// 番茄钟阶段
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PomodoroPhase {
     Work,
     ShortBreak,
@@ -316,6 +317,9 @@ impl PomodoroSession {
             .phase
             .next(self.cycle_count, self.config.cycles_until_long_break);
         self.switch_to_phase(next_phase)?;
+        // Keep the timer loop fully backend-driven: the next phase starts immediately
+        // after a phase completes, without requiring a UI listener to trigger start().
+        self.start()?;
 
         Ok(())
     }
@@ -363,7 +367,6 @@ impl PomodoroSession {
 #[derive(Debug, Clone)]
 pub struct PomodoroService {
     session: Option<PomodoroSession>,
-    config: PomodoroConfig,
 }
 
 // 安全实现 Send + Sync，因为所有字段都是基本类型
@@ -394,7 +397,6 @@ impl PomodoroService {
     pub fn new(config: PomodoroConfig) -> Self {
         Self {
             session: Some(PomodoroSession::new(config.clone())),
-            config,
         }
     }
 
@@ -451,11 +453,14 @@ impl PomodoroService {
     /// 处理计时器 tick
     pub async fn tick(&mut self) -> Option<PomodoroEvent> {
         if let Some(session) = self.session.as_mut() {
+            if !session.is_running {
+                return None;
+            }
+            let phase_before_tick = session.phase;
             if let Ok(completed) = session.tick() {
                 if completed {
-                    let completed_phase = session.phase;
-                    let next_phase = completed_phase
-                        .next(session.cycle_count, session.config.cycles_until_long_break);
+                    let completed_phase = phase_before_tick;
+                    let next_phase = session.phase;
 
                     return Some(PomodoroEvent::PhaseCompleted {
                         completed_phase,
@@ -498,5 +503,54 @@ impl PomodoroStats {
             total_focus_time: 0,
             average_daily_sessions: 0.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pomodoro_phase_serializes_as_snake_case() {
+        assert_eq!(serde_json::to_string(&PomodoroPhase::Work).unwrap(), "\"work\"");
+        assert_eq!(
+            serde_json::to_string(&PomodoroPhase::ShortBreak).unwrap(),
+            "\"short_break\""
+        );
+        assert_eq!(
+            serde_json::to_string(&PomodoroPhase::LongBreak).unwrap(),
+            "\"long_break\""
+        );
+    }
+
+    #[test]
+    fn completing_phase_auto_starts_next_phase() {
+        let mut service = PomodoroService::new(PomodoroConfig::default());
+        service.start().unwrap();
+
+        {
+            let session = service.get_session_mut().unwrap();
+            session.remaining = 0;
+        }
+
+        let event = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async { service.tick().await });
+
+        match event {
+            Some(PomodoroEvent::PhaseCompleted {
+                completed_phase,
+                next_phase,
+                ..
+            }) => {
+                assert_eq!(completed_phase, PomodoroPhase::Work);
+                assert_eq!(next_phase, PomodoroPhase::ShortBreak);
+            }
+            _ => panic!("expected PhaseCompleted event"),
+        }
+
+        let session = service.get_session().unwrap();
+        assert!(session.is_running);
+        assert_eq!(session.phase, PomodoroPhase::ShortBreak);
     }
 }

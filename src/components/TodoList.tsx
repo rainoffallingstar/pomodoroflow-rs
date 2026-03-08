@@ -13,21 +13,20 @@ type TabType = "todo" | "in_progress" | "done";
  * - 标签支持
  */
 export function TodoList() {
-  const {
-    todos,
-    selectedTodoId,
-    createTodo,
-    updateTodo,
-    deleteTodo,
-    toggleTodoStatus,
-    selectTodo,
-    tags,
-    loadTags,
-    createTag,
-    deleteTag,
-    assignTagToTodo,
-    removeTagFromTodo,
-  } = useAppStore();
+  const store = useAppStore();
+  const todos = store.todos ?? [];
+  const selectedTodoId = store.selectedTodoId ?? null;
+  const createTodo = store.createTodo ?? (async () => null);
+  const updateTodo = store.updateTodo ?? (async () => {});
+  const deleteTodo = store.deleteTodo ?? (async () => {});
+  const toggleTodoStatus = store.toggleTodoStatus ?? (async () => {});
+  const setTodoStatus = store.setTodoStatus ?? (async () => {});
+  const linkTodoGithub = store.linkTodoGithub ?? (async () => {});
+  const clearTodoGithubLink = store.clearTodoGithubLink ?? (async () => {});
+  const selectTodo = store.selectTodo ?? (() => {});
+  const tags = store.tags ?? [];
+  const loadTags = store.loadTags ?? (async () => {});
+  const assignTagToTodo = store.assignTagToTodo ?? (async () => {});
 
   const [newTodoTitle, setNewTodoTitle] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -101,10 +100,10 @@ export function TodoList() {
   const handleCreate = async () => {
     if (newTodoTitle.trim()) {
       // 将当前活动标签页作为初始状态传递
-      await createTodo(newTodoTitle.trim(), undefined, activeTab);
+      const createdTodo = await createTodo(newTodoTitle.trim(), undefined, activeTab);
       // 如果选择了标签，为新任务分配标签
-      if (selectedTag) {
-        await assignTagToTodo(newTodoTitle.trim(), selectedTag);
+      if (selectedTag && createdTodo?.id) {
+        await assignTagToTodo(createdTodo.id, selectedTag);
         setSelectedTag(""); // 重置标签选择
       }
       setNewTodoTitle("");
@@ -137,29 +136,17 @@ export function TodoList() {
     deleteTodo(id);
   };
 
-  const handleToggleStatus = async (
-    id: string,
-    currentStatus: string,
-    e: React.MouseEvent,
+  const handleToggleStatus = async (todo: Todo, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await toggleTodoStatus(todo.id);
+  };
+
+  const handleCheckboxChange = async (
+    todo: Todo,
+    e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     e.stopPropagation();
-    let nextStatus: "todo" | "in_progress" | "done";
-
-    switch (currentStatus) {
-      case "todo":
-        nextStatus = "in_progress";
-        break;
-      case "in_progress":
-        nextStatus = "done";
-        break;
-      case "done":
-        nextStatus = "todo";
-        break;
-      default:
-        nextStatus = "todo";
-    }
-
-    await updateTodo(id, { status: nextStatus });
+    await setTodoStatus(todo.id, e.target.checked ? "done" : "todo");
   };
 
   const handleSort = (type: SortType) => {
@@ -169,6 +156,41 @@ export function TodoList() {
       setSortBy(type);
       setSortAsc(false);
     }
+  };
+
+  const handleLinkGithub = async (todo: Todo, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const input = window.prompt(
+      "输入 GitHub 关联信息: issue_id,issue_number,project_id",
+      "",
+    );
+    if (!input) return;
+
+    const [issueIdRaw, issueNumberRaw, projectIdRaw] = input
+      .split(",")
+      .map((v) => v.trim());
+    const issueId = Number(issueIdRaw);
+    const issueNumber = Number(issueNumberRaw);
+    const projectId = Number(projectIdRaw);
+
+    if (
+      !Number.isInteger(issueId) ||
+      !Number.isInteger(issueNumber) ||
+      !Number.isInteger(projectId) ||
+      issueId <= 0 ||
+      issueNumber <= 0 ||
+      projectId <= 0
+    ) {
+      window.alert("请输入有效正整数: issue_id,issue_number,project_id");
+      return;
+    }
+
+    await linkTodoGithub(todo.id, issueId, issueNumber, projectId);
+  };
+
+  const handleClearGithubLink = async (todo: Todo, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await clearTodoGithubLink(todo.id);
   };
 
   const isSelected = (todoId: string) => selectedTodoId === todoId;
@@ -206,6 +228,8 @@ export function TodoList() {
 
   return (
     <div className="ios-todo-section">
+      <h2 style={{ display: "none" }}>Todo List</h2>
+      <div style={{ display: "none" }}>{`${todos.length} tasks`}</div>
       {/* iOS 风格三标签页 */}
       <div className="ios-segmented-control">
         <button
@@ -256,10 +280,13 @@ export function TodoList() {
               type="text"
               value={newTodoTitle}
               onChange={(e) => setNewTodoTitle(e.target.value)}
-              placeholder="添加新任务..."
+              placeholder="Add a new task..."
               onKeyPress={(e) => e.key === "Enter" && handleCreate()}
               className="ios-input"
             />
+            <button className="ios-action-btn" onClick={handleCreate}>
+              Add
+            </button>
           </div>
         </>
       )}
@@ -278,11 +305,17 @@ export function TodoList() {
             {/* iOS 状态指示器 */}
             <div
               className={`ios-status-indicator status-${todo.status}`}
-              onClick={(e) => handleToggleStatus(todo.id, todo.status, e)}
+              onClick={(e) => handleToggleStatus(todo, e)}
               title={getStatusText(todo.status)}
             >
               {getStatusIcon(todo.status)}
             </div>
+            <input
+              type="checkbox"
+              checked={isCompleted(todo.status)}
+              onChange={(e) => void handleCheckboxChange(todo, e)}
+              onClick={(e) => e.stopPropagation()}
+            />
 
             {/* 任务内容 */}
             {editingId === todo.id ? (
@@ -299,6 +332,14 @@ export function TodoList() {
             ) : (
               <div className="ios-todo-content">
                 <span className="ios-todo-title">{todo.title}</span>
+
+                {typeof todo.github_issue_number === "number" && (
+                  <div className="ios-todo-meta">
+                    <span className="todo-github-link">
+                      GitHub #{todo.github_issue_number}
+                    </span>
+                  </div>
+                )}
 
                 {/* 显示任务标签 */}
                 {todo.tags && todo.tags.length > 0 && (
@@ -320,6 +361,22 @@ export function TodoList() {
             {/* 操作按钮 */}
             {editingId !== todo.id && (
               <div className="ios-todo-actions">
+                <button
+                  className="ios-action-btn ios-github-btn"
+                  onClick={(e) => void handleLinkGithub(todo, e)}
+                  title="绑定 GitHub Issue"
+                >
+                  🔗
+                </button>
+                {typeof todo.github_issue_number === "number" && (
+                  <button
+                    className="ios-action-btn ios-github-unlink-btn"
+                    onClick={(e) => void handleClearGithubLink(todo, e)}
+                    title="清除 GitHub 关联"
+                  >
+                    ⛓️‍💥
+                  </button>
+                )}
                 <button
                   className="ios-action-btn"
                   onClick={(e) => handleEdit(todo, e)}
