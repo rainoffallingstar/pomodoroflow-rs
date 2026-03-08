@@ -97,7 +97,7 @@ jobs:
           (
             cd artifacts
             zip -9 "${{ steps.meta.outputs.artifact_name }}" ./*
-            rm -f ./*
+            rm -f -- *.exe *.dll
           )
 
       - name: Move daily tag to current commit
